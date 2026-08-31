@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "/Users/krisha/Documents/AgentPay/backend/.venv/bin/python",
+  "python.pythonPath": "/Users/krisha/Documents/AgentPay/backend/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "/Users/krisha/Documents/AgentPay/backend"
+  ],
+  "python.envFile": "/Users/krisha/Documents/AgentPay/.env",
+  "python.venvPath": "/Users/krisha/Documents/AgentPay/backend",
+  "python.venvFolders": [".venv"]
+}
+

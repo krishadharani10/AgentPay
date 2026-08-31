@@ -1,0 +1,11 @@
+{
+  "name": "agentpay-root",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "./start.sh",
+    "start": "./start.sh",
+    "test": "cd backend && .venv/bin/pytest && cd ../frontend && npm run build",
+    "test:api": "python3 scripts/test_system.py"
+  }
+}
