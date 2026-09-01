@@ -3,6 +3,7 @@ from app.services.payment_adapter import (
     PaymentProvider,
     MockPaymentProvider,
     MockPaymentMode,
+    PaymentFailureReason,
     PaymentAdapter,
     MockPaymentAdapter,
     PaymentExecutionRequest,
@@ -11,7 +12,14 @@ from app.services.payment_adapter import (
 from app.services.payment_service import (
     PaymentService,
     PolicyViolationError,
+    MAX_RETRIES,
+)
+from app.models.transaction import (
+    TransactionStatus,
     InvalidPaymentStateError,
+    MaxRetriesExceededError,
+    VALID_STATE_TRANSITIONS,
+    validate_transition,
 )
 
 __all__ = [
@@ -19,11 +27,17 @@ __all__ = [
     "PaymentProvider",
     "MockPaymentProvider",
     "MockPaymentMode",
+    "PaymentFailureReason",
     "PaymentAdapter",
     "MockPaymentAdapter",
     "PaymentExecutionRequest",
     "PaymentExecutionResult",
     "PaymentService",
     "PolicyViolationError",
+    "MAX_RETRIES",
+    "TransactionStatus",
     "InvalidPaymentStateError",
+    "MaxRetriesExceededError",
+    "VALID_STATE_TRANSITIONS",
+    "validate_transition",
 ]

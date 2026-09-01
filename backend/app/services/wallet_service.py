@@ -22,7 +22,7 @@ class WalletService:
 
         stmt = select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
             Transaction.wallet_id == wallet_id,
-            Transaction.status.in_(["SUCCESS", "APPROVED"]),
+            Transaction.status == "SUCCESS",
             Transaction.created_at >= start_of_day,
         )
         total_spent = db.execute(stmt).scalar_one_or_none() or 0.0

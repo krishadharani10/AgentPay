@@ -17,6 +17,7 @@ from app.models import (
     Merchant,
     PaymentMethod,
     Transaction,
+    PaymentAttempt,
     AuditLog,
 )
 from app.config import get_settings, Settings

@@ -2,6 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
+from app.models.transaction import TransactionStatus
 
 
 class TransactionBase(BaseModel):
@@ -9,7 +10,7 @@ class TransactionBase(BaseModel):
     category: str
     amount: float = Field(..., gt=0)
     currency: str = "INR"
-    status: str = "PENDING"
+    status: str = TransactionStatus.REQUESTED.value
     decision_reason: Optional[str] = None
     payment_provider: Optional[str] = None
     provider_payment_id: Optional[str] = None

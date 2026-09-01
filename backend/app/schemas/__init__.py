@@ -20,6 +20,11 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionResponse,
 )
+from app.schemas.payment_attempt import (
+    PaymentAttemptBase,
+    PaymentAttemptCreate,
+    PaymentAttemptResponse,
+)
 from app.schemas.audit_log import AuditLogResponse
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.schemas.agent_types import (
@@ -48,6 +53,9 @@ __all__ = [
     "TransactionBase",
     "TransactionCreate",
     "TransactionResponse",
+    "PaymentAttemptBase",
+    "PaymentAttemptCreate",
+    "PaymentAttemptResponse",
     "AuditLogResponse",
     "AgentRunRequest",
     "AgentRunResponse",

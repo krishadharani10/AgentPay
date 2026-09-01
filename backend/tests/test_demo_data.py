@@ -21,7 +21,7 @@ class TestDemoDataAndSeeding:
         assert bill["currency"] == "INR"
         assert bill["category"] == "utilities"
         assert "electricity" in bill["description"].lower() or "power" in bill["description"].lower()
-        assert bill["status"] == "PENDING"
+        assert bill["status"] == "PAYMENT_PENDING"
 
     def test_2_netflix_bill_returns_3000(self, db_session, test_seed_data):
         """Requirement 2: Netflix returns INR 3,000."""
@@ -32,7 +32,7 @@ class TestDemoDataAndSeeding:
         assert bill["currency"] == "INR"
         assert bill["category"] == "subscriptions"
         assert "netflix" in bill["description"].lower()
-        assert bill["status"] == "PENDING"
+        assert bill["status"] == "PAYMENT_PENDING"
 
     def test_3_spotify_bill_returns_699(self, db_session, test_seed_data):
         """Requirement 3: Spotify returns INR 699."""
@@ -43,7 +43,7 @@ class TestDemoDataAndSeeding:
         assert bill["currency"] == "INR"
         assert bill["category"] == "subscriptions"
         assert "spotify" in bill["description"].lower()
-        assert bill["status"] == "PENDING"
+        assert bill["status"] == "PAYMENT_PENDING"
 
     def test_4_makemytrip_and_amazon_bills_exist(self, db_session, test_seed_data):
         """Verify MakeMyTrip and Amazon demo bills exist with appropriate metadata."""
@@ -52,14 +52,14 @@ class TestDemoDataAndSeeding:
         assert mmt_bill["merchant_name"] == "MakeMyTrip"
         assert mmt_bill["amount"] == 4500.0
         assert mmt_bill["category"] == "travel"
-        assert mmt_bill["status"] == "PENDING"
+        assert mmt_bill["status"] == "PAYMENT_PENDING"
 
         amazon_bill = get_bill(db_session, merchant_name="Amazon")
         assert amazon_bill is not None
         assert amazon_bill["merchant_name"] == "Amazon"
         assert amazon_bill["amount"] == 899.0
         assert amazon_bill["category"] == "shopping"
-        assert amazon_bill["status"] == "PENDING"
+        assert amazon_bill["status"] == "PAYMENT_PENDING"
 
     def test_5_bills_retrieved_via_get_bill_by_id_and_query(self, db_session, test_seed_data):
         """Requirement 4: Bills can be retrieved through get_bill by ID, name, or query string."""

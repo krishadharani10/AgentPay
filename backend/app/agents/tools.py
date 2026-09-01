@@ -91,9 +91,9 @@ def get_bill(
             )
         )
 
-    # Prioritize PENDING bills, then newest
+    # Prioritize pending/requested demo bills, then newest
     stmt = stmt.order_by(
-        case((Transaction.status == "PENDING", 0), else_=1),
+        case((Transaction.status.in_(["PAYMENT_PENDING", "REQUESTED", "PENDING"]), 0), else_=1),
         Transaction.created_at.desc(),
     )
 
@@ -238,3 +238,32 @@ def retry_payment(
             "reason": str(err),
             "error_message": str(err),
         }
+
+
+def fallback_payment(
+    db: Session,
+    payment_id: uuid.UUID,
+    fallback_method_id: Optional[uuid.UUID] = None,
+    adapter: Optional[PaymentAdapter] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Executes a policy-controlled fallback payment using a secondary PaymentMethod.
+    """
+    service = PaymentService(adapter=adapter)
+    try:
+        return service.execute_fallback_payment(
+            db,
+            payment_id=payment_id,
+            fallback_method_id=fallback_method_id,
+            metadata=metadata,
+        )
+    except (InvalidPaymentStateError, PolicyViolationError, ValueError) as err:
+        return {
+            "success": False,
+            "status": "FALLBACK_REJECTED",
+            "decision": "DENIED",
+            "reason": str(err),
+            "error_message": str(err),
+        }
+

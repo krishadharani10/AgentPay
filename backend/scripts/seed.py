@@ -74,7 +74,7 @@ DEMO_BILLS_DATA = [
         "merchant_name": "Torrent Power",
         "amount": 1240.0,
         "category": "utilities",
-        "status": "PENDING",
+        "status": "PAYMENT_PENDING",
         "decision_reason": "Electricity bill",
     },
     {
@@ -83,7 +83,7 @@ DEMO_BILLS_DATA = [
         "merchant_name": "Netflix",
         "amount": 3000.0,
         "category": "subscriptions",
-        "status": "PENDING",
+        "status": "PAYMENT_PENDING",
         "decision_reason": "Netflix subscription",
     },
     {
@@ -92,7 +92,7 @@ DEMO_BILLS_DATA = [
         "merchant_name": "Spotify",
         "amount": 699.0,
         "category": "subscriptions",
-        "status": "PENDING",
+        "status": "PAYMENT_PENDING",
         "decision_reason": "Spotify subscription",
     },
     {
@@ -101,7 +101,7 @@ DEMO_BILLS_DATA = [
         "merchant_name": "MakeMyTrip",
         "amount": 4500.0,
         "category": "travel",
-        "status": "PENDING",
+        "status": "PAYMENT_PENDING",
         "decision_reason": "Flight booking to Mumbai",
     },
     {
@@ -110,7 +110,7 @@ DEMO_BILLS_DATA = [
         "merchant_name": "Amazon",
         "amount": 899.0,
         "category": "shopping",
-        "status": "PENDING",
+        "status": "PAYMENT_PENDING",
         "decision_reason": "Office supplies and essentials",
     },
 ]
@@ -123,6 +123,9 @@ def seed_database(db: Optional[Session] = None):
     """
     is_external_session = db is not None
     if not is_external_session:
+        from app.database import engine
+        from app.models.base import Base
+        Base.metadata.create_all(bind=engine)
         db = SessionLocal()
 
     try:
