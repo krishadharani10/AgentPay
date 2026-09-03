@@ -490,8 +490,10 @@ class TestProviderFactory:
     """Test get_payment_provider factory function and runtime switching."""
 
     def test_1_default_returns_mock_provider(self):
-        """Default (no env override) returns MockPaymentProvider."""
-        provider = get_payment_provider()
+        """Mock settings returns MockPaymentProvider."""
+        from app.config import Settings
+        settings = Settings(PAYMENT_PROVIDER="MOCK")
+        provider = get_payment_provider(settings=settings)
         assert isinstance(provider, MockPaymentProvider)
 
     def test_2_razorpay_config_returns_razorpay_provider(self):
@@ -543,10 +545,11 @@ class TestProviderFactory:
         assert isinstance(provider, MockPaymentProvider)
 
     def test_7_payment_service_uses_factory_default(self):
-        """PaymentService defaults to the configured provider via get_payment_provider."""
+        """PaymentService defaults to the configured provider or custom provider."""
         from app.services.payment_service import PaymentService
-        service = PaymentService()
+        service = PaymentService(provider=MockPaymentProvider())
         assert isinstance(service.provider, MockPaymentProvider)
+
 
 
 

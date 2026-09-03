@@ -313,6 +313,9 @@ class MockPaymentProvider(PaymentProvider):
 MockPaymentAdapter = MockPaymentProvider
 
 
+_SENTINEL = object()
+
+
 class RazorpayPaymentProvider(PaymentProvider):
     """
     Razorpay Test Mode Payment Provider.
@@ -323,15 +326,15 @@ class RazorpayPaymentProvider(PaymentProvider):
 
     def __init__(
         self,
-        key_id: Optional[str] = None,
-        key_secret: Optional[str] = None,
+        key_id: Any = _SENTINEL,
+        key_secret: Any = _SENTINEL,
         base_url: str = "https://api.razorpay.com/v1",
         timeout: float = 10.0,
         http_client: Optional[httpx.Client] = None,
     ):
         settings = get_settings()
-        raw_key_id = key_id if key_id is not None else getattr(settings, "razorpay_key_id", "")
-        raw_key_secret = key_secret if key_secret is not None else getattr(settings, "razorpay_key_secret", "")
+        raw_key_id = getattr(settings, "razorpay_key_id", "") if key_id is _SENTINEL else key_id
+        raw_key_secret = getattr(settings, "razorpay_key_secret", "") if key_secret is _SENTINEL else key_secret
         self.key_id = str(raw_key_id or "").strip()
         self.key_secret = str(raw_key_secret or "").strip()
         self.base_url = base_url.rstrip("/")

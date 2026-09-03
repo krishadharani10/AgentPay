@@ -24,6 +24,11 @@ class TransactionCreate(TransactionBase):
     payment_method_id: Optional[UUID] = None
 
 
+from app.schemas.payment_attempt import PaymentAttemptResponse
+from app.schemas.audit_log import AuditLogResponse
+from typing import List
+
+
 class TransactionResponse(TransactionBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -33,5 +38,14 @@ class TransactionResponse(TransactionBase):
     wallet_id: UUID
     merchant_id: Optional[UUID] = None
     payment_method_id: Optional[UUID] = None
+    payment_method_type: Optional[str] = None
+    payment_method_alias: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class TransactionDetailResponse(TransactionResponse):
+    payment_attempts: List[PaymentAttemptResponse] = []
+    audit_logs: List[AuditLogResponse] = []
+    merchant_description: Optional[str] = None
+    merchant_website: Optional[str] = None

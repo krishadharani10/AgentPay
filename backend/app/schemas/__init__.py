@@ -19,6 +19,7 @@ from app.schemas.transaction import (
     TransactionBase,
     TransactionCreate,
     TransactionResponse,
+    TransactionDetailResponse,
 )
 from app.schemas.payment_attempt import (
     PaymentAttemptBase,
@@ -53,6 +54,7 @@ __all__ = [
     "TransactionBase",
     "TransactionCreate",
     "TransactionResponse",
+    "TransactionDetailResponse",
     "PaymentAttemptBase",
     "PaymentAttemptCreate",
     "PaymentAttemptResponse",

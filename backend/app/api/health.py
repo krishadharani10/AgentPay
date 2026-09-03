@@ -28,5 +28,7 @@ def health_check(
         environment=settings.app_env,
         database=db_status,
         version="0.1.0",
+        provider=(getattr(settings, "payment_provider", "MOCK") or "MOCK").upper(),
+        policy_engine="active",
         details=details if details else None,
     )

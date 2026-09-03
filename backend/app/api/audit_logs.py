@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/audit-logs", tags=["Audit Logs"])
 @router.get("", response_model=List[AuditLogResponse])
 def get_audit_logs(
     agent_id: Optional[UUID] = None,
+    transaction_id: Optional[UUID] = None,
     decision: Optional[str] = None,
     limit: int = 50,
     db: Session = Depends(get_db),
@@ -23,6 +24,8 @@ def get_audit_logs(
     stmt = select(AuditLog)
     if agent_id:
         stmt = stmt.where(AuditLog.agent_id == agent_id)
+    if transaction_id:
+        stmt = stmt.where(AuditLog.transaction_id == transaction_id)
     if decision:
         stmt = stmt.where(AuditLog.decision == decision.upper())
 

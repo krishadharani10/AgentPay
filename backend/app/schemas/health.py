@@ -8,4 +8,6 @@ class HealthResponse(BaseModel):
     environment: str = Field(..., examples=["development"])
     database: str = Field(..., examples=["connected"])
     version: str = Field(default="0.1.0", examples=["0.1.0"])
+    provider: Optional[str] = Field(default="MOCK", examples=["MOCK", "RAZORPAY"])
+    policy_engine: Optional[str] = Field(default="active", examples=["active"])
     details: Optional[Dict[str, Any]] = None

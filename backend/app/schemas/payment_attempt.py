@@ -24,5 +24,7 @@ class PaymentAttemptResponse(PaymentAttemptBase):
     id: UUID
     transaction_id: UUID
     payment_method_id: Optional[UUID] = None
+    payment_method_type: Optional[str] = None
+    payment_method_alias: Optional[str] = None
     created_at: datetime
     updated_at: datetime

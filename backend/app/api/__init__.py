@@ -6,6 +6,7 @@ from app.api.merchants import router as merchants_router
 from app.api.transactions import router as transactions_router
 from app.api.audit_logs import router as audit_logs_router
 from app.api.agent import router as agent_router
+from app.api.payments import router as payments_router
 
 __all__ = [
     "health_router",
@@ -16,4 +17,6 @@ __all__ = [
     "transactions_router",
     "audit_logs_router",
     "agent_router",
+    "payments_router",
 ]
+
