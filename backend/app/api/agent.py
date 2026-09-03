@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.agents.orchestrator import AgentOrchestrator
-from app.services.payment_adapter import MockPaymentAdapter
+from app.services.payment_adapter import get_payment_provider, MockPaymentProvider, MockPaymentMode
 
 router = APIRouter(prefix="/api/agent", tags=["AI Agent"])
 
@@ -17,10 +17,14 @@ def run_agent(
     Run Agent Orchestrator to process a user payment request.
     Orchestrates tools (get_bill, get_wallet_policy, evaluate_payment, create_payment).
     Guaranteed: Policy engine determines authorization deterministically.
+    Provider is selected via PAYMENT_PROVIDER environment variable.
     """
     try:
-        # If force_failure is requested, inject MockPaymentAdapter with failure
-        adapter = MockPaymentAdapter(default_failure=request.force_failure)
+        # Select provider via factory; if force_failure, override to Mock DECLINED mode
+        if request.force_failure:
+            adapter = MockPaymentProvider(mode=MockPaymentMode.DECLINED)
+        else:
+            adapter = get_payment_provider()
         orchestrator = AgentOrchestrator(adapter=adapter)
 
         result = orchestrator.process_request(
@@ -40,3 +44,4 @@ def run_agent(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         )
+

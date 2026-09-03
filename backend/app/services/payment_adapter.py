@@ -1,9 +1,11 @@
 import uuid
+import httpx
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Dict, Any, Union, List
+from typing import Optional, Dict, Any, Union, List, Tuple
 from pydantic import BaseModel, Field
+from app.config import get_settings, Settings
 
 
 class PaymentFailureReason(str, Enum):
@@ -309,3 +311,336 @@ class MockPaymentProvider(PaymentProvider):
 
 # Backward-compatible alias
 MockPaymentAdapter = MockPaymentProvider
+
+
+class RazorpayPaymentProvider(PaymentProvider):
+    """
+    Razorpay Test Mode Payment Provider.
+    Implements the authoritative PaymentProvider abstraction for Razorpay Test Mode.
+    Communicates securely with Razorpay API using environment-backed credentials.
+    Zero leakage: RAZORPAY_KEY_SECRET is strictly guarded and never exposed in responses or logs.
+    """
+
+    def __init__(
+        self,
+        key_id: Optional[str] = None,
+        key_secret: Optional[str] = None,
+        base_url: str = "https://api.razorpay.com/v1",
+        timeout: float = 10.0,
+        http_client: Optional[httpx.Client] = None,
+    ):
+        settings = get_settings()
+        raw_key_id = key_id if key_id is not None else getattr(settings, "razorpay_key_id", "")
+        raw_key_secret = key_secret if key_secret is not None else getattr(settings, "razorpay_key_secret", "")
+        self.key_id = str(raw_key_id or "").strip()
+        self.key_secret = str(raw_key_secret or "").strip()
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self._external_client = http_client
+
+    def _get_client(self) -> httpx.Client:
+        if self._external_client is not None:
+            return self._external_client
+        return httpx.Client(timeout=self.timeout)
+
+    def _map_razorpay_error(self, status_code: int, error_data: Dict[str, Any]) -> Tuple[str, str]:
+        """
+        Maps Razorpay API error structures into authoritative PaymentFailureReason and human description.
+        """
+        error_obj = error_data.get("error", {}) if isinstance(error_data, dict) else {}
+        # Guard: error_obj might be a non-dict (e.g. a plain string like "bad gateway")
+        if not isinstance(error_obj, dict):
+            error_obj = {}
+        code = str(error_obj.get("code") or "").upper()
+        description = str(error_obj.get("description") or error_obj.get("message") or "")
+        reason = str(error_obj.get("reason") or "").lower()
+        desc_lower = description.lower()
+
+        if "insufficient" in desc_lower or "limit" in desc_lower or "balance" in desc_lower or "funds" in desc_lower:
+            return PaymentFailureReason.INSUFFICIENT_FUNDS.value, description or "Insufficient balance or card limit exceeded."
+        elif "declined" in desc_lower or reason == "payment_declined" or "rejected" in desc_lower or code in ("BAD_REQUEST_ERROR", "PAYMENT_DECLINED"):
+            return PaymentFailureReason.DECLINED.value, description or "Payment was declined by issuing bank or network."
+        elif "timeout" in desc_lower or "timed out" in desc_lower or code in ("GATEWAY_TIMEOUT", "TIMEOUT"):
+            return PaymentFailureReason.TIMEOUT.value, description or "Payment gateway request timed out."
+        elif "network" in desc_lower or code == "NETWORK_ERROR" or status_code in (502, 503, 504):
+            return PaymentFailureReason.NETWORK_ERROR.value, description or "Network communication failure connecting to Razorpay."
+        else:
+            return PaymentFailureReason.PROVIDER_ERROR.value, description or f"Razorpay processing error (HTTP {status_code})."
+
+    def create_payment(self, request: PaymentExecutionRequest) -> PaymentExecutionResult:
+        now = datetime.now(timezone.utc)
+
+        # 1. Credentials Check
+        if not self.key_id or not self.key_secret:
+            return PaymentExecutionResult(
+                success=False,
+                status="FAILED",
+                payment_id=request.transaction_id,
+                provider_payment_id="uninitialized_credentials",
+                amount=request.amount,
+                currency=request.currency,
+                attempt_number=request.attempt_number,
+                error_code=PaymentFailureReason.PROVIDER_ERROR.value,
+                error_message="Razorpay credentials (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) not configured.",
+                timestamp=now,
+                raw_response={"error": "MISSING_CREDENTIALS", "provider": "RazorpayPaymentProvider"},
+                response_payload={"error": "MISSING_CREDENTIALS", "provider": "RazorpayPaymentProvider"},
+            )
+
+        # 2. Prepare payload (Amount in paise for INR)
+        amount_paise = int(round(request.amount * 100))
+        payload = {
+            "amount": amount_paise,
+            "currency": request.currency.upper(),
+            "receipt": request.idempotency_key or f"rcpt_{request.transaction_id[:16]}",
+            "notes": {
+                "transaction_id": request.transaction_id,
+                "merchant_name": request.merchant_name,
+                "category": request.category,
+                "attempt_number": str(request.attempt_number),
+                "payment_method": request.payment_method_alias or "UPI",
+            },
+        }
+
+        # 3. Dispatch to Razorpay Orders API
+        endpoint = f"{self.base_url}/orders"
+        try:
+            client = self._get_client()
+            should_close = self._external_client is None
+            try:
+                response = client.post(
+                    endpoint,
+                    json=payload,
+                    auth=(self.key_id, self.key_secret),
+                )
+            finally:
+                if should_close:
+                    client.close()
+
+            status_code = response.status_code
+            try:
+                data = response.json()
+            except Exception:
+                data = {"raw_text": response.text}
+
+            # 4. Handle Success (200 / 201)
+            if status_code in (200, 201):
+                order_id = data.get("id") or f"order_{uuid.uuid4().hex[:14]}"
+                sanitized_response = {
+                    "provider": "RazorpayPaymentProvider",
+                    "mode": "TEST",
+                    "order_id": order_id,
+                    "entity": data.get("entity", "order"),
+                    "amount": data.get("amount", amount_paise),
+                    "currency": data.get("currency", request.currency),
+                    "status": data.get("status", "created"),
+                    "receipt": data.get("receipt"),
+                    "method": request.payment_method_alias or "UPI",
+                }
+                return PaymentExecutionResult(
+                    success=True,
+                    status="SUCCESS",
+                    payment_id=request.transaction_id,
+                    provider_payment_id=order_id,
+                    amount=request.amount,
+                    currency=request.currency,
+                    attempt_number=request.attempt_number,
+                    timestamp=now,
+                    raw_response=sanitized_response,
+                    response_payload=sanitized_response,
+                )
+
+            # 5. Handle HTTP API Errors
+            mapped_code, error_msg = self._map_razorpay_error(status_code, data)
+            raw_err_obj = data.get("error", {}) if isinstance(data, dict) else {}
+            raw_err_code = raw_err_obj.get("code") if isinstance(raw_err_obj, dict) else None
+            sanitized_err_response = {
+                "provider": "RazorpayPaymentProvider",
+                "mode": "TEST",
+                "http_status": status_code,
+                "error_code": raw_err_code,
+                "description": error_msg,
+            }
+            return PaymentExecutionResult(
+                success=False,
+                status="TIMEOUT" if mapped_code == PaymentFailureReason.TIMEOUT.value else "FAILED",
+                payment_id=request.transaction_id,
+                provider_payment_id=data.get("id") or f"rzp_err_{uuid.uuid4().hex[:8]}",
+                amount=request.amount,
+                currency=request.currency,
+                attempt_number=request.attempt_number,
+                error_code=mapped_code,
+                error_message=error_msg,
+                timestamp=now,
+                raw_response=sanitized_err_response,
+                response_payload=sanitized_err_response,
+            )
+
+        except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout):
+            return PaymentExecutionResult(
+                success=False,
+                status="TIMEOUT",
+                payment_id=request.transaction_id,
+                provider_payment_id=f"rzp_timeout_{uuid.uuid4().hex[:8]}",
+                amount=request.amount,
+                currency=request.currency,
+                attempt_number=request.attempt_number,
+                error_code=PaymentFailureReason.TIMEOUT.value,
+                error_message="Razorpay gateway request timed out.",
+                timestamp=now,
+                raw_response={"error": "TIMEOUT", "provider": "RazorpayPaymentProvider"},
+                response_payload={"error": "TIMEOUT", "provider": "RazorpayPaymentProvider"},
+            )
+        except (httpx.NetworkError, httpx.ConnectError):
+            return PaymentExecutionResult(
+                success=False,
+                status="FAILED",
+                payment_id=request.transaction_id,
+                provider_payment_id=f"rzp_neterr_{uuid.uuid4().hex[:8]}",
+                amount=request.amount,
+                currency=request.currency,
+                attempt_number=request.attempt_number,
+                error_code=PaymentFailureReason.NETWORK_ERROR.value,
+                error_message="Network communication error connecting to Razorpay.",
+                timestamp=now,
+                raw_response={"error": "NETWORK_ERROR", "provider": "RazorpayPaymentProvider"},
+                response_payload={"error": "NETWORK_ERROR", "provider": "RazorpayPaymentProvider"},
+            )
+        except Exception as exc:
+            return PaymentExecutionResult(
+                success=False,
+                status="FAILED",
+                payment_id=request.transaction_id,
+                provider_payment_id=f"rzp_err_{uuid.uuid4().hex[:8]}",
+                amount=request.amount,
+                currency=request.currency,
+                attempt_number=request.attempt_number,
+                error_code=PaymentFailureReason.PROVIDER_ERROR.value,
+                error_message=f"Razorpay provider exception: {str(exc)}",
+                timestamp=now,
+                raw_response={"error": "PROVIDER_EXCEPTION", "details": str(exc), "provider": "RazorpayPaymentProvider"},
+                response_payload={"error": "PROVIDER_EXCEPTION", "details": str(exc), "provider": "RazorpayPaymentProvider"},
+            )
+
+    def get_status(self, provider_payment_id: str) -> PaymentExecutionResult:
+        now = datetime.now(timezone.utc)
+        if not self.key_id or not self.key_secret:
+            return PaymentExecutionResult(
+                success=False,
+                status="FAILED",
+                payment_id="unknown",
+                provider_payment_id=provider_payment_id,
+                amount=0.0,
+                currency="INR",
+                attempt_number=1,
+                error_code=PaymentFailureReason.PROVIDER_ERROR.value,
+                error_message="Razorpay credentials not configured.",
+                timestamp=now,
+                raw_response={"error": "MISSING_CREDENTIALS", "provider": "RazorpayPaymentProvider"},
+                response_payload={"error": "MISSING_CREDENTIALS", "provider": "RazorpayPaymentProvider"},
+            )
+
+        is_order = str(provider_payment_id).startswith("order_")
+        endpoint = f"{self.base_url}/orders/{provider_payment_id}" if is_order else f"{self.base_url}/payments/{provider_payment_id}"
+
+        try:
+            client = self._get_client()
+            should_close = self._external_client is None
+            try:
+                response = client.get(
+                    endpoint,
+                    auth=(self.key_id, self.key_secret),
+                )
+            finally:
+                if should_close:
+                    client.close()
+
+            if response.status_code == 200:
+                data = response.json()
+                status_raw = str(data.get("status") or "").lower()
+                is_success = status_raw in ("created", "authorized", "captured", "paid")
+                amount_inr = float(data.get("amount", 0)) / 100.0
+
+                return PaymentExecutionResult(
+                    success=is_success,
+                    status="SUCCESS" if is_success else "FAILED",
+                    payment_id=data.get("notes", {}).get("transaction_id", "unknown"),
+                    provider_payment_id=provider_payment_id,
+                    amount=amount_inr,
+                    currency=data.get("currency", "INR"),
+                    attempt_number=int(data.get("notes", {}).get("attempt_number", 1)),
+                    error_code=None if is_success else PaymentFailureReason.DECLINED.value,
+                    error_message=None if is_success else f"Payment in status '{status_raw}'",
+                    timestamp=now,
+                    raw_response={"provider": "RazorpayPaymentProvider", "status": status_raw, "order_id": provider_payment_id},
+                    response_payload={"provider": "RazorpayPaymentProvider", "status": status_raw, "order_id": provider_payment_id},
+                )
+            else:
+                return PaymentExecutionResult(
+                    success=False,
+                    status="FAILED",
+                    payment_id="unknown",
+                    provider_payment_id=provider_payment_id,
+                    amount=0.0,
+                    currency="INR",
+                    attempt_number=1,
+                    error_code=PaymentFailureReason.PROVIDER_ERROR.value,
+                    error_message=f"Failed to retrieve Razorpay payment status (HTTP {response.status_code})",
+                    timestamp=now,
+                    raw_response={"error": "LOOKUP_FAILED", "http_status": response.status_code},
+                    response_payload={"error": "LOOKUP_FAILED", "http_status": response.status_code},
+                )
+        except Exception as exc:
+            return PaymentExecutionResult(
+                success=False,
+                status="FAILED",
+                payment_id="unknown",
+                provider_payment_id=provider_payment_id,
+                amount=0.0,
+                currency="INR",
+                attempt_number=1,
+                error_code=PaymentFailureReason.PROVIDER_ERROR.value,
+                error_message=f"Exception checking Razorpay status: {str(exc)}",
+                timestamp=now,
+                raw_response={"error": "LOOKUP_EXCEPTION", "details": str(exc)},
+                response_payload={"error": "LOOKUP_EXCEPTION", "details": str(exc)},
+            )
+
+    def retry(self, request: PaymentExecutionRequest) -> PaymentExecutionResult:
+        return self.create_payment(request)
+
+
+def get_payment_provider(
+    settings: Optional[Settings] = None,
+    mode: Union[MockPaymentMode, str] = MockPaymentMode.SUCCESS,
+) -> PaymentProvider:
+    """
+    Authoritative provider factory.
+    Selects provider based on settings or environment:
+    - If PAYMENT_PROVIDER == "RAZORPAY": returns RazorpayPaymentProvider (requires credentials)
+    - If PAYMENT_PROVIDER == "MOCK" (default): returns MockPaymentProvider
+    - Any other value: raises ValueError
+    """
+    SUPPORTED_PROVIDERS = {"MOCK", "RAZORPAY"}
+
+    s = settings or get_settings()
+    provider_type = (getattr(s, "payment_provider", None) or "MOCK").upper().strip()
+
+    if provider_type not in SUPPORTED_PROVIDERS:
+        raise ValueError(
+            f"Invalid PAYMENT_PROVIDER='{provider_type}'. "
+            f"Supported values: {', '.join(sorted(SUPPORTED_PROVIDERS))}."
+        )
+
+    if provider_type == "RAZORPAY":
+        key_id = str(getattr(s, "razorpay_key_id", "") or "").strip()
+        key_secret = str(getattr(s, "razorpay_key_secret", "") or "").strip()
+        if not key_id or not key_secret:
+            raise ValueError(
+                "PAYMENT_PROVIDER=RAZORPAY requires both RAZORPAY_KEY_ID and "
+                "RAZORPAY_KEY_SECRET environment variables to be set."
+            )
+        return RazorpayPaymentProvider(key_id=key_id, key_secret=key_secret)
+
+    return MockPaymentProvider(mode=mode)
+

@@ -27,11 +27,12 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
 
-    # Future integration placeholders (optional in foundation phase)
-    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    # Payment Provider Configuration
+    payment_provider: str = Field(default="MOCK", alias="PAYMENT_PROVIDER")  # "MOCK" or "RAZORPAY"
     razorpay_key_id: str = Field(default="", alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: str = Field(default="", alias="RAZORPAY_KEY_SECRET")
     razorpay_webhook_secret: str = Field(default="", alias="RAZORPAY_WEBHOOK_SECRET")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
 
     @field_validator("cors_origins", mode="after")
     @classmethod

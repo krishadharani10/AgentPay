@@ -25,6 +25,7 @@ from app.services.payment_adapter import (
     PaymentFailureReason,
     PaymentExecutionRequest,
     PaymentExecutionResult,
+    get_payment_provider,
 )
 
 # Authoritative Retry & Fallback Constraint: Maximum secondary attempts permitted after the initial attempt.
@@ -54,7 +55,7 @@ class PaymentService:
         provider: Optional[PaymentProvider] = None,
         adapter: Optional[PaymentProvider] = None,
     ):
-        self.provider = provider or adapter or MockPaymentProvider()
+        self.provider = provider or adapter or get_payment_provider()
 
     @property
     def adapter(self) -> PaymentProvider:

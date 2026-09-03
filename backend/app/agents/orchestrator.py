@@ -21,7 +21,7 @@ from app.schemas.agent_types import (
 )
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog
-from app.services.payment_adapter import PaymentAdapter, MockPaymentAdapter
+from app.services.payment_adapter import PaymentAdapter, MockPaymentAdapter, get_payment_provider
 
 
 class AgentOrchestrator:
@@ -36,7 +36,7 @@ class AgentOrchestrator:
         adapter: Optional[PaymentAdapter] = None,
         llm_provider: Optional[LLMProvider] = None,
     ):
-        self.adapter = adapter or MockPaymentAdapter()
+        self.adapter = adapter or get_payment_provider()
         self.llm_provider = llm_provider or MockLLMProvider()
 
     def process_request(

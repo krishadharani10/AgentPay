@@ -208,7 +208,7 @@ def run_day3_live_verification():
         res_d1 = service_d.process_payment(
             db,
             merchant_name="MakeMyTrip",
-            amount=4500.0,
+            amount=500.0,
             category="travel",
             idempotency_key=key_d,
             agent_id=agent.id,
@@ -220,7 +220,7 @@ def run_day3_live_verification():
         res_d2 = service_d.process_payment(
             db,
             merchant_name="MakeMyTrip",
-            amount=4500.0,
+            amount=500.0,
             category="travel",
             idempotency_key=key_d,
             agent_id=agent.id,

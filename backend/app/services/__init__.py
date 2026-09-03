@@ -6,8 +6,10 @@ from app.services.payment_adapter import (
     PaymentFailureReason,
     PaymentAdapter,
     MockPaymentAdapter,
+    RazorpayPaymentProvider,
     PaymentExecutionRequest,
     PaymentExecutionResult,
+    get_payment_provider,
 )
 from app.services.payment_service import (
     PaymentService,
@@ -30,8 +32,10 @@ __all__ = [
     "PaymentFailureReason",
     "PaymentAdapter",
     "MockPaymentAdapter",
+    "RazorpayPaymentProvider",
     "PaymentExecutionRequest",
     "PaymentExecutionResult",
+    "get_payment_provider",
     "PaymentService",
     "PolicyViolationError",
     "MAX_RETRIES",
