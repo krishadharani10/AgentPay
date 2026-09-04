@@ -7,10 +7,7 @@ from app.main import app
 from app.config import get_settings
 
 
-client = TestClient(app)
-
-
-def test_get_payment_provider_config():
+def test_get_payment_provider_config(client):
     response = client.get("/api/payments/config")
     assert response.status_code == 200
     data = response.json()
@@ -23,8 +20,9 @@ def test_get_payment_provider_config():
     assert "secret" not in data
 
 
-def test_verify_razorpay_payment_signature():
+def test_verify_razorpay_payment_signature(client, test_seed_data):
     # 1. First trigger an agent payment to create a transaction in db
+
     run_res = client.post(
         "/api/agent/run",
         json={

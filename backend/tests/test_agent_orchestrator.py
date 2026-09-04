@@ -37,13 +37,13 @@ class TestAgentOrchestration:
         assert tx.amount == 1240.0
 
     def test_2_transaction_limit_exceeded(self, db_session, test_seed_data):
-        """Test 2: Given per_transaction_limit = 5000 and amount = 6000 -> DENIED, payment NOT created."""
+        """Test 2: Given per_transaction_limit = 8000 and amount = 9500 -> DENIED, payment NOT created."""
         orchestrator = AgentOrchestrator(adapter=MockPaymentAdapter())
         result = orchestrator.process_request(
             db_session,
-            message="Pay my hotel booking of 6000 at MakeMyTrip",
+            message="Pay my hotel booking of 9500 at MakeMyTrip",
             merchant_name="MakeMyTrip",
-            amount=6000.0,
+            amount=9500.0,
             category="travel",
         )
         assert result["success"] is False
@@ -97,14 +97,14 @@ class TestAgentOrchestration:
             wallet_id=wallet.id,
             merchant_name="MakeMyTrip",
             category="travel",
-            amount=9000.0,
+            amount=14000.0,
             status="SUCCESS",
             currency="INR",
         )
         db_session.add(prior_tx)
         db_session.commit()
 
-        # Try to pay ₹2,000 when only ₹1,000 budget remains (limit is ₹10,000)
+        # Try to pay ₹2,000 when only ₹1,000 budget remains (limit is ₹15,000)
         orchestrator = AgentOrchestrator(adapter=MockPaymentAdapter())
         result = orchestrator.process_request(
             db_session,
@@ -215,7 +215,7 @@ class TestAgentOrchestration:
         # 2. Test Denied payment via API
         resp_denied = client.post(
             "/api/agent/run",
-            json={"message": "Pay 7000 for travel", "amount": 7000.0, "category": "travel", "merchant_name": "MakeMyTrip"},
+            json={"message": "Pay 9500 for travel", "amount": 9500.0, "category": "travel", "merchant_name": "MakeMyTrip"},
         )
         assert resp_denied.status_code == 200
         data_denied = resp_denied.json()

@@ -21,8 +21,8 @@ class PaymentMethodResponse(BaseModel):
 
 class WalletBase(BaseModel):
     status: str = "ACTIVE"
-    daily_spending_limit: float = Field(default=10000.0, ge=0)
-    per_transaction_limit: float = Field(default=5000.0, ge=0)
+    daily_spending_limit: float = Field(default=15000.0, ge=0)
+    per_transaction_limit: float = Field(default=8000.0, ge=0)
     currency: str = "INR"
 
 

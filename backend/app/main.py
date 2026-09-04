@@ -10,6 +10,7 @@ from app.api.transactions import router as transactions_router
 from app.api.audit_logs import router as audit_logs_router
 from app.api.agent import router as agent_router
 from app.api.payments import router as payments_router
+from app.api.tasks import router as tasks_router
 
 settings = get_settings()
 
@@ -40,6 +41,7 @@ app.include_router(transactions_router)
 app.include_router(audit_logs_router)
 app.include_router(agent_router)
 app.include_router(payments_router)
+app.include_router(tasks_router)
 
 
 

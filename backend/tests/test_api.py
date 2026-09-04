@@ -25,8 +25,8 @@ class TestAPIEndpoints:
         assert response.status_code == 200
         policies = response.json()
         assert len(policies) >= 1
-        assert policies[0]["max_transaction_amount"] == 5000.0
-        assert policies[0]["daily_spending_limit"] == 10000.0
+        assert policies[0]["max_transaction_amount"] == 8000.0
+        assert policies[0]["daily_spending_limit"] == 15000.0
 
     def test_get_wallet(self, client, test_seed_data):
         """Test GET /api/wallet endpoint."""
@@ -34,8 +34,8 @@ class TestAPIEndpoints:
         assert response.status_code == 200
         wallet_data = response.json()
         assert wallet_data["status"] == "ACTIVE"
-        assert wallet_data["daily_spending_limit"] == 10000.0
-        assert wallet_data["per_transaction_limit"] == 5000.0
+        assert wallet_data["daily_spending_limit"] == 15000.0
+        assert wallet_data["per_transaction_limit"] == 8000.0
         assert "current_daily_spent" in wallet_data
         assert "remaining_daily_budget" in wallet_data
         assert len(wallet_data["payment_methods"]) >= 1
@@ -54,7 +54,7 @@ class TestAPIEndpoints:
         data = response.json()
         assert data["approved"] is True
         assert data["decision_code"] == "APPROVED"
-        assert data["remaining_daily_budget"] == 8760.0
+        assert data["remaining_daily_budget"] == 13760.0
         assert data["audit_log_id"] is not None
 
         # Verify AuditLog created in DB
@@ -77,13 +77,13 @@ class TestAPIEndpoints:
         data = response.json()
         assert data["approved"] is True
         assert data["decision_code"] == "APPROVED"
-        assert data["remaining_daily_budget"] == 7000.0
+        assert data["remaining_daily_budget"] == 12000.0
 
     def test_policy_evaluate_above_limit_rejected(self, client, test_seed_data, db_session):
-        """Test POST /api/policy/evaluate with ₹6,000 amount exceeding limit."""
+        """Test POST /api/policy/evaluate with ₹9,500 amount exceeding limit."""
         payload = {
             "merchant_name": "MakeMyTrip",
-            "amount": 6000.0,
+            "amount": 9500.0,
             "category": "travel",
             "idempotency_key": "test_mmt_over_limit",
         }

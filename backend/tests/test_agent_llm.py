@@ -77,7 +77,7 @@ class TestAgentLLMOrchestration:
         )
         response = orchestrator.process_with_llm(
             db_session,
-            message="Book a holiday for 6000 on MakeMyTrip",
+            message="Book a holiday for 12000 on MakeMyTrip",
         )
 
         assert isinstance(response, AgentResponse)
@@ -87,9 +87,9 @@ class TestAgentLLMOrchestration:
         assert response.payment_status == "REJECTED"
         assert response.decision_code in ["TX_LIMIT_EXCEEDED", "MULTIPLE_POLICY_VIOLATIONS"]
 
-        # Verify no transaction was created for 6000
+        # Verify no transaction was created for 12000
         tx = db_session.execute(
-            select(Transaction).where(Transaction.amount == 6000.0)
+            select(Transaction).where(Transaction.amount == 12000.0)
         ).scalar_one_or_none()
         assert tx is None
 
@@ -127,7 +127,7 @@ class TestAgentLLMOrchestration:
         )
         response = orchestrator.process_with_llm(
             db_session,
-            message="Book luxury flights on MakeMyTrip for 8000",
+            message="Book luxury flights on MakeMyTrip for 12000",
         )
 
         assert response.success is False

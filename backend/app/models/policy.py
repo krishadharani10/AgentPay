@@ -33,12 +33,12 @@ class Policy(Base, TimestampMixin):
     )
     max_transaction_amount: Mapped[float] = mapped_column(
         Float,
-        default=5000.0,
+        default=8000.0,
         nullable=False,
     )
     daily_spending_limit: Mapped[float] = mapped_column(
         Float,
-        default=10000.0,
+        default=15000.0,
         nullable=False,
     )
     allowed_categories: Mapped[List[str]] = mapped_column(

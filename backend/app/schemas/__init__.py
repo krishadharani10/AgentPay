@@ -34,6 +34,15 @@ from app.schemas.agent_types import (
     PaymentRequest,
     AgentResponse,
 )
+from app.schemas.task_types import (
+    TaskType,
+    TaskIntent,
+    SelectedFlightOption,
+    SelectedRestaurantOption,
+    TaskResponse,
+    TaskRunRequest,
+    TaskRunResponse,
+)
 
 __all__ = [
     "MerchantBase",
@@ -65,4 +74,12 @@ __all__ = [
     "AgentDecision",
     "PaymentRequest",
     "AgentResponse",
+    "TaskType",
+    "TaskIntent",
+    "SelectedFlightOption",
+    "SelectedRestaurantOption",
+    "TaskResponse",
+    "TaskRunRequest",
+    "TaskRunResponse",
 ]
+

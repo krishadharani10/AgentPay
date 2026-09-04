@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone, time
+from datetime import datetime, timezone, time, timedelta
 from typing import Optional, Dict, Any, List
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
@@ -27,6 +27,50 @@ class WalletService:
         )
         total_spent = db.execute(stmt).scalar_one_or_none() or 0.0
         return float(total_spent)
+
+    @staticmethod
+    def reset_daily_spent(db: Session, wallet_id: uuid.UUID) -> float:
+        """
+        Resets the daily spending amount for testing purposes.
+        Shifts today's transactions timestamps to prior calendar window,
+        allowing fresh test transactions to execute without rejection.
+        """
+        now = datetime.now(timezone.utc)
+        start_of_day = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+        yesterday_end = start_of_day - timedelta(seconds=1)
+
+        prev_spent = WalletService.get_current_daily_spent(db, wallet_id)
+
+        stmt = (
+            update(Transaction)
+            .where(
+                Transaction.wallet_id == wallet_id,
+                Transaction.created_at >= start_of_day,
+            )
+            .values(created_at=yesterday_end)
+        )
+        db.execute(stmt)
+
+        wallet = db.get(Wallet, wallet_id)
+        if wallet:
+            audit = AuditLog(
+                agent_id=wallet.agent_id,
+                transaction_id=None,
+                event_type="DAILY_SPEND_RESET",
+                action="RESET_DAILY_SPEND",
+                decision="RESET",
+                reason="Daily spending limit and spent amounts renewed for demonstration and testing.",
+                metadata_payload={
+                    "wallet_id": str(wallet_id),
+                    "reset_at": now.isoformat(),
+                    "previous_spent": prev_spent,
+                    "new_spent": 0.0,
+                },
+            )
+            db.add(audit)
+
+        db.commit()
+        return 0.0
 
     @staticmethod
     def get_or_create_default_context(db: Session) -> Dict[str, Any]:

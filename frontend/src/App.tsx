@@ -1,286 +1,903 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Navbar, type NavigationTab } from './components/Navbar'
+import { WalletCard } from './components/WalletCard'
+import { AgentConsole } from './components/AgentConsole'
+import { TransactionTable } from './components/TransactionTable'
+import { TransactionDetail } from './components/TransactionDetail'
+import { SystemActivity } from './components/SystemActivity'
+import { PolicyCheckMatrix } from './components/PolicyCheckMatrix'
+import { ErrorAlert } from './components/Common'
+import { api } from './api/client'
 import {
-  ShieldCheck,
-  Server,
-  Database,
-  Cpu,
-  RefreshCw,
   CheckCircle2,
-  AlertCircle,
+  Cpu,
+  KeyRound,
+  CreditCard,
+  QrCode,
+  Shield,
+  RotateCw,
+  User,
   Lock,
-  Layers,
-  Terminal,
-  Activity
+  Bell,
+  ChevronRight,
 } from 'lucide-react'
-
-interface HealthData {
-  status: string
-  app: string
-  environment: string
-  database: string
-  version: string
-  details?: Record<string, unknown>
-}
+import type {
+  HealthResponse,
+  WalletSummary,
+  Transaction,
+  TransactionDetail as TransactionDetailType,
+  AuditLog,
+  AgentRunResponse,
+  TaskRunResponse,
+} from './types'
 
 export function App() {
-  const [health, setHealth] = useState<HealthData | null>(null)
+  const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard')
+  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [wallet, setWallet] = useState<WalletSummary | null>(null)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionDetailType | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
+  const [agentLoading, setAgentLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastChecked, setLastChecked] = useState<Date | null>(null)
 
-  const checkHealth = async () => {
-    setLoading(true)
+  const loadData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     setError(null)
     try {
-      // Attempt to query via Vite proxy or direct relative path / direct backend URL
-      let res: Response
-      try {
-        res = await fetch('/api/health')
-      } catch {
-        res = await fetch('http://127.0.0.1:8000/health')
-      }
+      const [healthData, walletData, txData, logsData] = await Promise.all([
+        api.getHealth().catch((e) => {
+          console.warn('Health check failed:', e)
+          return null
+        }),
+        api.getWallet().catch((e) => {
+          console.warn('Wallet fetch failed:', e)
+          return null
+        }),
+        api.getTransactions().catch((e) => {
+          console.warn('Transactions fetch failed:', e)
+          return []
+        }),
+        api.getAuditLogs().catch((e) => {
+          console.warn('Audit logs fetch failed:', e)
+          return []
+        }),
+      ])
 
-      if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}`)
-      }
-      const data: HealthData = await res.json()
-      setHealth(data)
-      setLastChecked(new Date())
+      setHealth(healthData)
+      setWallet(walletData)
+      setTransactions(txData)
+      setAuditLogs(logsData)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to connect to backend'
+      const msg = err instanceof Error ? err.message : 'Failed to load AgentPay data.'
       setError(msg)
-      setHealth(null)
-      setLastChecked(new Date())
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let ignore = false
+    const init = async () => {
+      try {
+        const [healthData, walletData, txData, logsData] = await Promise.all([
+          api.getHealth().catch(() => null),
+          api.getWallet().catch(() => null),
+          api.getTransactions().catch(() => []),
+          api.getAuditLogs().catch(() => []),
+        ])
+        if (!ignore) {
+          setHealth(healthData)
+          setWallet(walletData)
+          setTransactions(txData)
+          setAuditLogs(logsData)
+          setLoading(false)
+        }
+      } catch (err: unknown) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : 'Failed to load data')
+          setLoading(false)
+        }
+      }
+    }
+    init()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  const handleSelectTransaction = async (tx: Transaction) => {
+    try {
+      const detail = await api.getTransaction(tx.id)
+      setSelectedTransaction(detail)
+    } catch (err: unknown) {
+      console.error('Failed to load transaction details:', err)
+      setSelectedTransaction({
+        ...tx,
+        payment_attempts: [],
+        audit_logs: [],
+      })
     }
   }
 
-  useEffect(() => {
-    checkHealth()
-  }, [])
+  const handleRunAgent = async (
+    message: string,
+    options?: { force_failure?: boolean; retry_if_failed?: boolean }
+  ): Promise<AgentRunResponse | null> => {
+    setAgentLoading(true)
+    setError(null)
+    try {
+      const response = await api.runAgent({
+        message,
+        force_failure: options?.force_failure,
+        retry_if_failed: options?.retry_if_failed ?? true,
+      })
+
+      await loadData(false)
+
+      if (response.payment_id) {
+        try {
+          const detail = await api.getTransaction(response.payment_id)
+          setSelectedTransaction(detail)
+        } catch (err) {
+          console.warn('Could not load new transaction detail:', err)
+        }
+      }
+
+      return response
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Agent execution failed.'
+      setError(msg)
+      return null
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const handleRunTask = async (
+    message: string,
+    options?: { force_failure?: boolean; retry_if_failed?: boolean }
+  ): Promise<TaskRunResponse | null> => {
+    setAgentLoading(true)
+    setError(null)
+    try {
+      const response = await api.executeTask({
+        message,
+        force_failure: options?.force_failure,
+        retry_if_failed: options?.retry_if_failed ?? true,
+      })
+
+      await loadData(false)
+
+      return response
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Autonomous task execution failed.'
+      setError(msg)
+      return null
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const handleInspectTransactionById = async (txId: string) => {
+    try {
+      const detail = await api.getTransaction(txId)
+      setSelectedTransaction(detail)
+    } catch (err) {
+      console.warn('Could not load transaction detail:', err)
+    }
+  }
+
+  // Greeting helper
+  const getGreeting = () => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good morning'
+    if (hour < 17) return 'Good afternoon'
+    return 'Good evening'
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-      {/* Background glow effects */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-indigo-600/15 blur-[120px] rounded-full" />
-        <div className="absolute top-1/3 -right-40 w-[400px] h-[400px] bg-blue-600/10 blur-[100px] rounded-full" />
-        <div className="absolute bottom-10 left-10 w-[350px] h-[350px] bg-emerald-600/10 blur-[100px] rounded-full" />
-      </div>
+    <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased">
+      {/* ── Horizontal Navbar ────────────────────────────────────────────────── */}
+      <Navbar activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      {/* Header / Navbar */}
-      <header className="border-b border-slate-800/80 bg-slate-900/40 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
-              <ShieldCheck className="w-6 h-6 text-white" />
+      {/* ── Main Content ─────────────────────────────────────────────────────── */}
+      <main className="flex-1 bg-[#F7F9FC]">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+          {/* Error Alert */}
+          {error && (
+            <div className="mb-6">
+              <ErrorAlert
+                title="Backend Communication Error"
+                message={error}
+                onRetry={loadData}
+              />
             </div>
-            <div>
-              <div className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                AgentPay
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              DASHBOARD
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-8">
+
+              {/* Welcome Header */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight" style={{ color: '#0d1b3e' }}>
+                    {getGreeting()}, Krisha 👋
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Welcome to AgentPay — Payments infrastructure for AI agents
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadData()}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  title="Refresh data"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
               </div>
-              <div className="text-[11px] text-slate-400 font-medium tracking-wide uppercase">
-                Foundation MVP
+
+              {/* Row 1: Wallet + Agent Console */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div className="lg:col-span-4">
+                  <WalletCard
+                    wallet={wallet}
+                    loading={loading}
+                    onWalletUpdated={loadData}
+                  />
+                </div>
+                <div className="lg:col-span-8">
+                  <AgentConsole
+                    onRunAgent={handleRunAgent}
+                    onRunTask={handleRunTask}
+                    loading={agentLoading}
+                    onPaymentVerified={loadData}
+                    onInspectTransaction={handleInspectTransactionById}
+                  />
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Frontend Active
-            </span>
-            <button
-              id="refresh-health-btn"
-              onClick={checkHealth}
-              disabled={loading}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 transition-all cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
-              Sync Status
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Body */}
-      <main className="max-w-6xl mx-auto px-6 py-10 flex-1 w-full space-y-8">
-        {/* Hero Section */}
-        <div className="text-center max-w-3xl mx-auto space-y-4 pt-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-            <Lock className="w-3.5 h-3.5" />
-            Permissioned Payment Infrastructure for AI Agents
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            System Foundation Ready
-          </h1>
-          <p className="text-slate-400 text-base sm:text-lg">
-            FastAPI backend, React + Vite + TypeScript frontend, PostgreSQL container, and SQLAlchemy 2.x initialized with strict policy guardrails.
-          </p>
-        </div>
-
-        {/* Status Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Frontend Card */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
-                <Cpu className="w-5 h-5" />
-              </div>
-              <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Running
-              </span>
-            </div>
-            <h3 className="text-lg font-semibold text-white">Frontend Service</h3>
-            <p className="text-xs text-slate-400 mt-1">React 18/19 • Vite • TypeScript • Tailwind CSS</p>
-            <div className="mt-4 pt-4 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-              <span>Port</span>
-              <span className="font-mono text-slate-200">5173</span>
-            </div>
-          </div>
-
-          {/* Backend Card */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400">
-                <Server className="w-5 h-5" />
-              </div>
-              {health?.status === 'ok' ? (
-                <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
-                </span>
-              ) : loading ? (
-                <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 animate-pulse" /> Connecting...
-                </span>
-              ) : (
-                <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5" /> Offline
-                </span>
-              )}
-            </div>
-            <h3 className="text-lg font-semibold text-white">FastAPI Backend</h3>
-            <p className="text-xs text-slate-400 mt-1">Python • Uvicorn • Pydantic Settings</p>
-            <div className="mt-4 pt-4 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-              <span>Endpoint</span>
-              <span className="font-mono text-slate-200">/health (Port 8000)</span>
-            </div>
-          </div>
-
-          {/* Database Card */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-violet-500/10 border border-violet-500/20 rounded-xl text-violet-400">
-                <Database className="w-5 h-5" />
-              </div>
-              {health?.database === 'connected' ? (
-                <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Ready
-                </span>
-              ) : (
-                <span className="text-xs px-2.5 py-1 rounded-md font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5" /> Docker Compose
-                </span>
-              )}
-            </div>
-            <h3 className="text-lg font-semibold text-white">PostgreSQL Engine</h3>
-            <p className="text-xs text-slate-400 mt-1">SQLAlchemy 2.x • Alembic Migrations</p>
-            <div className="mt-4 pt-4 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-              <span>Database URL</span>
-              <span className="font-mono text-slate-200 text-[11px]">localhost:5432/agentpay</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Backend Health Check Details */}
-        <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <Terminal className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-base font-semibold text-white">Backend Health Diagnostics</h2>
-            </div>
-            {lastChecked && (
-              <span className="text-xs text-slate-500 font-mono">
-                Last checked: {lastChecked.toLocaleTimeString()}
-              </span>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="py-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-              <p className="text-sm">Querying /health endpoint...</p>
-            </div>
-          ) : error ? (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
+              {/* Row 2: Recent Activity (compact — 5 rows, no search) */}
               <div>
-                <p className="font-semibold">Backend Unreachable</p>
-                <p className="text-xs text-rose-400 mt-1">{error}</p>
-                <p className="text-xs text-slate-400 mt-2">
-                  Ensure the FastAPI backend is running on <code className="text-slate-200">http://127.0.0.1:8000</code>.
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold" style={{ color: '#0d1b3e' }}>
+                    Recent Activity
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('transactions')}
+                    className="text-sm font-medium transition-colors cursor-pointer"
+                    style={{ color: '#305EFF' }}
+                  >
+                    View all →
+                  </button>
+                </div>
+                <RecentActivity
+                  transactions={transactions}
+                  loading={loading}
+                  onSelect={handleSelectTransaction}
+                />
               </div>
-            </div>
-          ) : health ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-                  <span className="text-xs text-slate-400 block">Status</span>
-                  <span className="text-sm font-semibold text-emerald-400 font-mono">{health.status}</span>
-                </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-                  <span className="text-xs text-slate-400 block">Application</span>
-                  <span className="text-sm font-semibold text-white font-mono">{health.app}</span>
-                </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-                  <span className="text-xs text-slate-400 block">Environment</span>
-                  <span className="text-sm font-semibold text-indigo-300 font-mono">{health.environment}</span>
-                </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
-                  <span className="text-xs text-slate-400 block">Database</span>
-                  <span className="text-sm font-semibold text-violet-300 font-mono">{health.database}</span>
-                </div>
-              </div>
-              <pre className="bg-slate-950 p-4 rounded-xl text-xs font-mono text-slate-300 overflow-x-auto border border-slate-800/80">
-                {JSON.stringify(health, null, 2)}
-              </pre>
-            </div>
-          ) : null}
-        </div>
 
-        {/* Core Architecture Rules Banner */}
-        <div className="bg-gradient-to-r from-slate-900/80 via-indigo-950/30 to-slate-900/80 border border-indigo-500/20 rounded-2xl p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers className="w-5 h-5 text-indigo-400" />
-            <h3 className="text-base font-semibold text-white">AgentPay Core Invariants</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60">
-              <span className="font-semibold text-indigo-300 block mb-1">1. LLM Request Only</span>
-              <span className="text-slate-400">LLM may request payments, but never directly authorizes or executes them.</span>
+              {/* Row 3: Trust Summary (compact) */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold" style={{ color: '#0d1b3e' }}>
+                    Audit & Trust
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('audit')}
+                    className="text-sm font-medium transition-colors cursor-pointer"
+                    style={{ color: '#305EFF' }}
+                  >
+                    View all →
+                  </button>
+                </div>
+                <SystemActivity logs={auditLogs} loading={loading} />
+              </div>
             </div>
-            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60">
-              <span className="font-semibold text-indigo-300 block mb-1">2. Deterministic Policy</span>
-              <span className="text-slate-400">All financial authorizations pass through the deterministic Policy Engine.</span>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              AUTONOMOUS TASKS
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'tasks' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Autonomous Tasks"
+                description="Execute autonomous commerce workflows with deterministic policy enforcement."
+              />
+              <AgentConsole
+                onRunAgent={handleRunAgent}
+                onRunTask={handleRunTask}
+                loading={agentLoading}
+                onPaymentVerified={loadData}
+                onInspectTransaction={handleInspectTransactionById}
+              />
             </div>
-            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60">
-              <span className="font-semibold text-indigo-300 block mb-1">3. Strict Idempotency</span>
-              <span className="text-slate-400">Every single payment transaction enforces a unique idempotency key.</span>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              PAYMENTS
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'payments' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Payments"
+                description="Primary and fallback payment rails with idempotency protection."
+              />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1">
+                  <WalletCard wallet={wallet} loading={loading} onWalletUpdated={loadData} />
+                </div>
+                <div className="lg:col-span-2">
+                  <TransactionTable
+                    transactions={transactions}
+                    loading={loading}
+                    onSelectTransaction={handleSelectTransaction}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/60">
-              <span className="font-semibold text-indigo-300 block mb-1">4. Complete Audit Trail</span>
-              <span className="text-slate-400">Every decision, success, fallback, and rejection produces an immutable audit record.</span>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              WALLET
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'wallet' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Wallet"
+                description="Real-time spending limits, balance, and configured payment rails."
+              />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <WalletCard wallet={wallet} loading={loading} onWalletUpdated={loadData} />
+
+                {/* Wallet Security Guarantees */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                  <h3 className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+                    Security Guarantees
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Deterministic controls enforced by the AgentPay policy engine:
+                  </p>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        title: 'Daily Spending Cap',
+                        detail: `Limits autonomous agent spend to ₹${(wallet?.daily_spending_limit ?? 15000).toLocaleString('en-IN')} per 24-hour cycle.`,
+                      },
+                      {
+                        title: 'Per-Transaction Ceiling',
+                        detail: `Caps single autonomous authorization at ₹${(wallet?.per_transaction_limit ?? 8000).toLocaleString('en-IN')}.`,
+                      },
+                      {
+                        title: 'Atomic Idempotency',
+                        detail: 'Replays duplicate task intents without creating secondary charges.',
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.title}
+                        className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-semibold text-slate-800">{item.title}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{item.detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-3 border-t border-slate-100 text-xs text-slate-400">
+                    Policy Engine Active · Single-Tenant Vault
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              POLICIES
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'policies' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Policies"
+                description="Deterministic rules evaluated on every agent payment intent before execution."
+              />
+
+              {/* Policy rules matrix */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6">
+                <PolicyCheckMatrix
+                  rulesChecked={[
+                    { rule: 'Daily Limit Check', passed: true, details: 'Total today under daily limit' },
+                    { rule: 'Per-Transaction Limit', passed: true, details: `Amount ≤ ₹${(wallet?.per_transaction_limit ?? 8000).toLocaleString('en-IN')}` },
+                    { rule: 'Merchant Allowed Check', passed: true, details: 'Recipient is on approved merchant whitelist' },
+                    { rule: 'Category Check', passed: true, details: 'Allowed categories: Travel, Dining, Utilities' },
+                    { rule: 'Wallet Balance Check', passed: true, details: 'Adequate balance in AgentPay ledger' },
+                    { rule: 'Idempotency Protection', passed: true, details: 'Unique idempotency key verified' },
+                  ]}
+                  isApproved={true}
+                  decisionCode="ALL_POLICIES_PASSING"
+                />
+              </div>
+
+              {/* Policy limits overview */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: 'Per-Transaction Limit',
+                    value: `₹${(wallet?.per_transaction_limit ?? 8000).toLocaleString('en-IN')}`,
+                    color: 'text-[#305EFF]',
+                  },
+                  {
+                    label: 'Daily Spending Limit',
+                    value: `₹${(wallet?.daily_spending_limit ?? 15000).toLocaleString('en-IN')}`,
+                    color: 'text-[#305EFF]',
+                  },
+                  {
+                    label: 'Allowed Categories',
+                    value: 'Travel, Dining, Utilities',
+                    color: 'text-emerald-600',
+                    small: true,
+                  },
+                  {
+                    label: 'Blocked Categories',
+                    value: 'Gambling, Crypto, Adult',
+                    color: 'text-rose-500',
+                    small: true,
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="bg-white border border-slate-200 rounded-xl p-4">
+                    <div className="text-xs text-slate-500 mb-1">{item.label}</div>
+                    <div className={`font-semibold text-sm ${item.color}`}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              TRANSACTIONS
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'transactions' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Transactions"
+                description="Search, filter, and inspect immutable transaction records."
+              />
+              <TransactionTable
+                transactions={transactions}
+                loading={loading}
+                onSelectTransaction={handleSelectTransaction}
+              />
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              AUDIT & TRUST
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'audit' && (
+            <div className="space-y-6">
+              <PageHeader
+                title="Audit & Trust"
+                description="Verifiable event stream recording all agent decisions and payment attempts."
+              />
+
+              {/* Core principle callout */}
+              <div
+                className="rounded-xl border p-5"
+                style={{ backgroundColor: '#EFF4FF', borderColor: '#c7d8ff' }}
+              >
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 mt-0.5 shrink-0" style={{ color: '#305EFF' }} />
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+                      The AgentPay Trust Principle
+                    </div>
+                    <div className="text-sm text-slate-600 mt-1 leading-relaxed">
+                      The AI agent may <strong>request</strong> a payment.{' '}
+                      <strong>AgentPay's Policy Engine</strong> decides whether money may move —
+                      never the LLM alone.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <SystemActivity logs={auditLogs} loading={loading} />
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              PROFILE
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6 max-w-2xl">
+              <PageHeader
+                title="Profile"
+                description="Your account and payment preferences."
+              />
+
+              {/* Identity card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6">
+                <div className="flex items-center gap-4 pb-5 border-b border-slate-100">
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
+                    style={{ backgroundColor: '#305EFF' }}
+                  >
+                    K
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold" style={{ color: '#0d1b3e' }}>
+                      Krisha
+                    </div>
+                    <div className="text-sm text-slate-500">Personal Account</div>
+                    <div className="inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-xs font-medium text-emerald-700">Active</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-5 space-y-4">
+                  <ProfileRow icon={<User className="w-4 h-4" />} label="Name" value="Krisha" />
+                  <ProfileRow
+                    icon={<CreditCard className="w-4 h-4" />}
+                    label="Primary Payment"
+                    value={
+                      wallet?.payment_methods?.[0]?.token_or_alias
+                        ? wallet.payment_methods[0].token_or_alias
+                        : 'krisha.agent@icici'
+                    }
+                  />
+                  <ProfileRow
+                    icon={<Lock className="w-4 h-4" />}
+                    label="Account Security"
+                    value="Policy Engine Protected"
+                  />
+                </div>
+              </div>
+
+              {/* Notification preferences */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6">
+                <h3 className="text-sm font-semibold mb-4" style={{ color: '#0d1b3e' }}>
+                  Preferences
+                </h3>
+                <div className="space-y-3">
+                  {[
+                    { label: 'Payment Notifications', value: 'Enabled' },
+                    { label: 'Policy Alert Notifications', value: 'Enabled' },
+                    { label: 'Audit Log Access', value: 'Full Access' },
+                  ].map((pref) => (
+                    <div key={pref.label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                      <div className="flex items-center gap-2.5">
+                        <Bell className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-sm text-slate-700">{pref.label}</span>
+                      </div>
+                      <span className="text-xs font-medium text-emerald-600">{pref.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              SETTINGS
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 max-w-2xl">
+              <PageHeader
+                title="Settings"
+                description="Payment rails, security, and autonomous agent configuration."
+              />
+
+              {/* Payment Adapters */}
+              <SettingsSection
+                icon={<Cpu className="w-4 h-4" />}
+                title="Payment Rails"
+                description="Active settlement integrations"
+              >
+                <div className="space-y-2">
+                  <SettingsRow
+                    label="Primary Rail"
+                    value={health?.provider === 'RAZORPAY' ? 'Razorpay Test Mode' : 'Razorpay Test Mode'}
+                    valueColor="text-emerald-600"
+                  />
+                  <SettingsRow
+                    label="Fallback Rail"
+                    value="Deterministic Mock Rail"
+                    valueColor="text-[#305EFF]"
+                  />
+                </div>
+              </SettingsSection>
+
+              {/* Security */}
+              <SettingsSection
+                icon={<KeyRound className="w-4 h-4" />}
+                title="Security"
+                description="Zero-compromise safety invariants"
+              >
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="text-sm font-medium text-slate-800">LLM Authorization Isolation</div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    The LLM may only request payments. The deterministic Policy Engine governs movement of funds.
+                  </p>
+                </div>
+              </SettingsSection>
+
+              {/* Autonomous Agent */}
+              <SettingsSection
+                icon={<Shield className="w-4 h-4" />}
+                title="Autonomous Agent"
+                description="Configured spending and category limits"
+              >
+                <div className="space-y-2">
+                  <SettingsRow
+                    label="Per-Transaction Limit"
+                    value={`₹${(wallet?.per_transaction_limit ?? 8000).toLocaleString('en-IN')}`}
+                  />
+                  <SettingsRow
+                    label="Daily Spending Limit"
+                    value={`₹${(wallet?.daily_spending_limit ?? 15000).toLocaleString('en-IN')}`}
+                  />
+                  <SettingsRow label="Allowed Categories" value="Travel, Dining, Utilities" />
+                </div>
+              </SettingsSection>
+
+              {/* Configured Payment Methods */}
+              <SettingsSection
+                icon={<QrCode className="w-4 h-4" />}
+                title="Payment Methods"
+                description="Registered payment instruments"
+              >
+                <div className="space-y-2">
+                  {(wallet?.payment_methods?.length
+                    ? wallet.payment_methods
+                    : [
+                        { id: '1', type: 'UPI_VPA', token_or_alias: 'krisha.agent@icici', is_primary: true, priority: 1 },
+                        { id: '2', type: 'CARD_TOKEN', token_or_alias: 'Corporate Visa •••• 4082', is_primary: false, priority: 2 },
+                      ]
+                  ).map((pm, i) => (
+                    <div key={pm.id || i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-2.5">
+                        {pm.type === 'UPI_VPA' ? (
+                          <QrCode className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5" style={{ color: '#305EFF' }} />
+                        )}
+                        <span className="text-sm text-slate-700 font-medium">{pm.token_or_alias}</span>
+                      </div>
+                      <span className={`text-xs font-medium ${pm.is_primary || pm.priority === 1 ? 'text-[#305EFF]' : 'text-slate-400'}`}>
+                        {pm.is_primary || pm.priority === 1 ? 'Primary' : 'Fallback'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </SettingsSection>
+            </div>
+          )}
+
         </div>
       </main>
 
+      {/* Transaction Detail Modal */}
+      {selectedTransaction && (
+        <TransactionDetail
+          transaction={selectedTransaction}
+          onClose={() => setSelectedTransaction(null)}
+        />
+      )}
+
       {/* Footer */}
-      <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-500">
-        AgentPay • Permissioned Autonomous AI Payment Infrastructure • Hackathon MVP
+      <footer className="bg-white border-t border-slate-200 py-5">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div
+              className="w-5 h-5 rounded flex items-center justify-center"
+              style={{ backgroundColor: '#305EFF' }}
+            >
+              <Shield className="w-3 h-3 text-white" />
+            </div>
+            <span>AgentPay — Permissioned Autonomous Payment Infrastructure</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${health?.status === 'ok' ? 'bg-emerald-500' : 'bg-slate-300'}`}
+            />
+            <span>{health?.status === 'ok' ? 'System Online' : 'Connecting...'}</span>
+          </div>
+        </div>
       </footer>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SMALL INLINE COMPONENTS (dashboard + settings helpers)
+══════════════════════════════════════════════════════════════════════════ */
+
+// Page header used across all non-dashboard tabs
+function PageHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="pb-2">
+      <h1 className="text-xl font-bold tracking-tight" style={{ color: '#0d1b3e' }}>
+        {title}
+      </h1>
+      <p className="text-sm text-slate-500 mt-0.5">{description}</p>
+    </div>
+  )
+}
+
+// Compact recent-activity list for the dashboard (no search, max 5 rows)
+function RecentActivity({
+  transactions,
+  loading,
+  onSelect,
+}: {
+  transactions: Transaction[]
+  loading: boolean
+  onSelect: (tx: Transaction) => void
+}) {
+  const recent = transactions.slice(0, 5)
+
+  const statusColor = (status: string) => {
+    const s = status.toUpperCase()
+    if (s === 'SUCCESS' || s === 'APPROVED') return 'text-emerald-600 bg-emerald-50'
+    if (s === 'REJECTED' || s === 'FAILED') return 'text-rose-600 bg-rose-50'
+    if (s === 'PENDING' || s === 'PAYMENT_PENDING') return 'text-amber-600 bg-amber-50'
+    return 'text-slate-500 bg-slate-100'
+  }
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+    } catch {
+      return iso
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="px-5 py-4 flex items-center gap-4 animate-pulse">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 bg-slate-100 rounded w-1/3" />
+              <div className="h-2.5 bg-slate-100 rounded w-1/4" />
+            </div>
+            <div className="h-3 bg-slate-100 rounded w-16" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (recent.length === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-10 text-center text-sm text-slate-400">
+        No transactions yet. Run an agent task to create one.
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+      {recent.map((tx) => (
+        <button
+          key={tx.id}
+          type="button"
+          onClick={() => onSelect(tx)}
+          className="w-full px-5 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors cursor-pointer text-left"
+        >
+          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <CreditCard className="w-4 h-4 text-slate-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-slate-800 truncate">{tx.merchant_name}</div>
+            <div className="text-xs text-slate-400 mt-0.5">{formatDate(tx.created_at)}</div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+              ₹{tx.amount.toLocaleString('en-IN')}
+            </div>
+            <span
+              className={`inline-block text-xs font-medium px-1.5 py-0.5 rounded mt-0.5 ${statusColor(tx.status)}`}
+            >
+              {tx.status}
+            </span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// Profile row helper
+function ProfileRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+      <div className="flex items-center gap-2.5 text-slate-500">
+        <span>{icon}</span>
+        <span className="text-sm">{label}</span>
+      </div>
+      <span className="text-sm font-medium text-slate-800">{value}</span>
+    </div>
+  )
+}
+
+// Settings section card
+function SettingsSection({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: '#EFF4FF', color: '#305EFF' }}
+        >
+          {icon}
+        </div>
+        <div>
+          <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+            {title}
+          </div>
+          <div className="text-xs text-slate-500">{description}</div>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// Settings key-value row
+function SettingsRow({
+  label,
+  value,
+  valueColor = 'text-slate-700',
+}: {
+  label: string
+  value: string
+  valueColor?: string
+}) {
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+      <span className="text-sm text-slate-600 font-medium">{label}</span>
+      <span className={`text-sm font-semibold ${valueColor}`}>{value}</span>
     </div>
   )
 }

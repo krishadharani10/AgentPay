@@ -147,12 +147,12 @@ class TestPaymentProviderAndService:
         spy_provider = SpyPaymentProvider()
         service = PaymentService(provider=spy_provider)
 
-        # Attempt ₹6,000 transaction (policy limit is ₹5,000)
+        # Attempt ₹9,500 transaction (policy limit is ₹8,000)
         with pytest.raises(PolicyViolationError) as exc_info:
             service.process_payment(
                 db_session,
                 merchant_name="MakeMyTrip",
-                amount=6000.0,
+                amount=9500.0,
                 category="travel",
                 idempotency_key="test_over_limit_key",
             )

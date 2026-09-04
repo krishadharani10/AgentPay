@@ -32,12 +32,12 @@ class Wallet(Base, TimestampMixin):
     )
     daily_spending_limit: Mapped[float] = mapped_column(
         Float,
-        default=10000.0,
+        default=15000.0,
         nullable=False,
     )
     per_transaction_limit: Mapped[float] = mapped_column(
         Float,
-        default=5000.0,
+        default=8000.0,
         nullable=False,
     )
     currency: Mapped[str] = mapped_column(

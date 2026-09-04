@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class PolicyBase(BaseModel):
     name: str = "Default Spending Policy"
     description: Optional[str] = None
-    max_transaction_amount: float = Field(default=5000.0, ge=0)
-    daily_spending_limit: float = Field(default=10000.0, ge=0)
+    max_transaction_amount: float = Field(default=8000.0, ge=0)
+    daily_spending_limit: float = Field(default=15000.0, ge=0)
     allowed_categories: List[str] = Field(default_factory=lambda: ["utilities", "subscriptions", "travel"])
     blocked_categories: List[str] = Field(default_factory=lambda: ["gambling", "crypto"])
     allowed_merchants: List[str] = Field(default_factory=list)

@@ -67,6 +67,7 @@ DEMO_MERCHANTS_DATA = [
     },
 ]
 
+
 DEMO_BILLS_DATA = [
     {
         "id": uuid.UUID("00000000-0000-0000-0000-000000000021"),
@@ -176,8 +177,8 @@ def seed_database(db: Optional[Session] = None):
                 id=WALLET_ID,
                 agent_id=agent.id,
                 status="ACTIVE",
-                daily_spending_limit=10000.0,
-                per_transaction_limit=5000.0,
+                daily_spending_limit=15000.0,
+                per_transaction_limit=8000.0,
                 currency="INR",
             )
             db.add(wallet)
@@ -185,8 +186,8 @@ def seed_database(db: Optional[Session] = None):
             print(f"  ✓ Created Wallet: ₹{wallet.daily_spending_limit:,.2f} daily / ₹{wallet.per_transaction_limit:,.2f} per-tx")
         else:
             wallet.status = "ACTIVE"
-            wallet.daily_spending_limit = 10000.0
-            wallet.per_transaction_limit = 5000.0
+            wallet.daily_spending_limit = 15000.0
+            wallet.per_transaction_limit = 8000.0
             db.flush()
             print(f"  • Wallet exists: ₹{wallet.daily_spending_limit:,.2f} daily / ₹{wallet.per_transaction_limit:,.2f} per-tx")
 
@@ -238,9 +239,9 @@ def seed_database(db: Optional[Session] = None):
                 agent_id=agent.id,
                 name="Autonomous Utility & Subscriptions Policy",
                 description="Allowed for routine household utilities, subscriptions, travel, and shopping with hard caps.",
-                max_transaction_amount=5000.0,
-                daily_spending_limit=10000.0,
-                allowed_categories=["utilities", "subscriptions", "travel", "shopping"],
+                max_transaction_amount=8000.0,
+                daily_spending_limit=15000.0,
+                allowed_categories=["utilities", "subscriptions", "travel", "shopping", "dining"],
                 blocked_categories=["gambling", "crypto"],
                 allowed_merchants=[],
                 blocked_merchants=[],
@@ -251,9 +252,10 @@ def seed_database(db: Optional[Session] = None):
             db.flush()
             print(f"  ✓ Created Policy: {policy.name}")
         else:
-            policy.max_transaction_amount = 5000.0
-            policy.daily_spending_limit = 10000.0
-            policy.allowed_categories = ["utilities", "subscriptions", "travel", "shopping"]
+            policy.max_transaction_amount = 8000.0
+            policy.daily_spending_limit = 15000.0
+            policy.allowed_categories = ["utilities", "subscriptions", "travel", "shopping", "dining"]
+
             policy.blocked_categories = ["gambling", "crypto"]
             policy.wallet_enabled = True
             policy.is_active = True
