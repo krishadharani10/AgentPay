@@ -19,10 +19,10 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
     if (!decisionReason) return null
 
     return (
-      <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <Shield className="w-4 h-4 text-[#305EFF]" />
-          <span className="text-xs font-bold text-[#0d1b3e] uppercase tracking-wider">
+          <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider">
             Deterministic Policy Engine Evaluation
           </span>
         </div>
@@ -33,10 +33,10 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
             <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           )}
           <div>
-            <div className="font-bold text-[#0d1b3e]">
+            <div className="font-semibold text-slate-900">
               {decisionCode || (isApproved ? 'APPROVED' : 'REJECTED')}
             </div>
-            <div className="text-slate-600 mt-0.5 font-medium">{decisionReason}</div>
+            <div className="text-slate-600 mt-0.5 font-normal leading-relaxed">{decisionReason}</div>
           </div>
         </div>
       </div>
@@ -61,17 +61,17 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
   }
 
   return (
-    <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 space-y-3">
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-[#305EFF]" />
-          <span className="text-xs font-bold text-[#0d1b3e] uppercase tracking-wider">
-            Deterministic Policy Engine Evaluation
+          <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider">
+            Policy Engine Rules Evaluation
           </span>
         </div>
         {decisionCode && (
           <span
-            className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+            className={`text-xs font-medium px-2 py-0.5 rounded-md border ${
               isApproved
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : 'bg-rose-50 text-rose-700 border-rose-200'
@@ -86,9 +86,9 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
         {rulesChecked.map((check, idx) => (
           <div
             key={idx}
-            className={`flex items-start justify-between gap-3 p-2.5 rounded-lg border text-xs transition-all ${
+            className={`flex items-start justify-between gap-3 p-3 rounded-lg border text-xs transition-colors ${
               check.passed
-                ? 'bg-white border-slate-200/80 text-slate-800'
+                ? 'bg-white border-slate-200 text-slate-800'
                 : 'bg-rose-50/80 border-rose-200 text-rose-900'
             }`}
           >
@@ -99,15 +99,15 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
                 <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               )}
               <div>
-                <div className="font-bold text-slate-900">{formatRuleName(check.rule)}</div>
-                <div className={`text-[11px] mt-0.5 font-medium ${check.passed ? 'text-slate-600' : 'text-rose-700'}`}>
+                <div className="font-semibold text-slate-900">{formatRuleName(check.rule)}</div>
+                <div className={`text-xs mt-0.5 font-normal ${check.passed ? 'text-slate-500' : 'text-rose-700'}`}>
                   {check.details}
                 </div>
               </div>
             </div>
 
             <span
-              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+              className={`text-[11px] font-medium px-2 py-0.5 rounded shrink-0 ${
                 check.passed
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-rose-100 text-rose-800 border border-rose-200'
@@ -120,8 +120,8 @@ export const PolicyCheckMatrix: React.FC<PolicyCheckMatrixProps> = ({
       </div>
 
       {decisionReason && (
-        <div className="pt-2 border-t border-slate-200/70 text-[11px] text-slate-600 leading-relaxed font-medium">
-          <span className="font-bold text-slate-800">Policy Verdict: </span>
+        <div className="pt-2.5 border-t border-slate-200 text-xs text-slate-600 leading-relaxed">
+          <span className="font-semibold text-slate-800">Policy Verdict: </span>
           {decisionReason}
         </div>
       )}

@@ -53,7 +53,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     }
     if (n.includes('makemytrip') || c.includes('travel') || n.includes('airdemo')) {
       return (
-        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#305EFF] border border-blue-200 flex items-center justify-center shrink-0">
           <Plane className="w-4 h-4" />
         </div>
       )
@@ -75,14 +75,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
   const getMethodBadge = (tx: Transaction) => {
     if (tx.payment_method_type === 'CARD_TOKEN' || tx.payment_method_alias?.includes('corp')) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
-          <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+        <span className="inline-flex items-center gap-1.5 text-xs font-normal text-slate-700">
+          <CreditCard className="w-3.5 h-3.5 text-[#305EFF]" />
           <span>Corporate Card</span>
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+      <span className="inline-flex items-center gap-1.5 text-xs font-normal text-slate-700">
         <QrCode className="w-3.5 h-3.5 text-emerald-600" />
         <span>UPI Rail</span>
       </span>
@@ -102,12 +102,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
   })
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_rgba(15,23,42,0.04)] overflow-hidden">
       {/* Table Header & Controls */}
       <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-[#0d1b3e] tracking-tight">Recent Activity & Transactions</h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
+          <h3 className="text-base font-semibold text-slate-900 tracking-tight">Recent Activity & Transactions</h3>
+          <p className="text-xs text-slate-500 font-normal mt-0.5">
             Immutable database records evaluated against deterministic financial policies
           </p>
         </div>
@@ -122,7 +122,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
               placeholder="Search merchant or category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:bg-white focus:border-[#305EFF] transition-all w-48 sm:w-56"
+              className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-[#305EFF] focus:ring-1 focus:ring-[#305EFF] transition-colors w-48 sm:w-56"
             />
           </div>
 
@@ -131,7 +131,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-hidden focus:bg-white focus:border-[#305EFF] transition-all cursor-pointer font-medium"
+              className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:outline-hidden focus:border-[#305EFF] transition-colors cursor-pointer font-medium"
             >
               <option value="ALL">All Statuses</option>
               <option value="SUCCESS">Success</option>
@@ -147,7 +147,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            <tr className="border-b border-slate-100 bg-slate-50/70 text-xs font-semibold text-slate-600">
               <th className="py-3 px-5">Merchant / Category</th>
               <th className="py-3 px-5">Amount (INR)</th>
               <th className="py-3 px-5">Payment Method</th>
@@ -159,7 +159,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
           <tbody className="divide-y divide-slate-100 text-xs">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                <td colSpan={6} className="py-12 text-center text-slate-400 font-normal">
                   {loading ? 'Fetching transactions from backend...' : 'No transactions matching your criteria.'}
                 </td>
               </tr>
@@ -168,17 +168,17 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                 <tr
                   key={tx.id}
                   onClick={() => onSelectTransaction(tx)}
-                  className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                  className="hover:bg-slate-50 transition-colors cursor-pointer group"
                 >
                   {/* Merchant / Category */}
                   <td className="py-3.5 px-5">
                     <div className="flex items-center gap-3">
                       {getMerchantIcon(tx.merchant_name, tx.category)}
                       <div>
-                        <span className="font-semibold text-[#0d1b3e] block group-hover:text-[#305EFF] transition-colors">
+                        <span className="font-semibold text-slate-900 block group-hover:text-[#305EFF] transition-colors">
                           {tx.merchant_name}
                         </span>
-                        <span className="text-[11px] text-slate-500 capitalize font-medium">
+                        <span className="text-[11px] text-slate-500 capitalize font-normal">
                           {tx.category}
                         </span>
                       </div>
@@ -187,7 +187,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                   {/* Amount */}
                   <td className="py-3.5 px-5">
-                    <span className="font-bold font-mono text-sm text-[#0d1b3e]">
+                    <span className="font-semibold text-sm text-slate-900">
                       ₹{tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </span>
                   </td>
@@ -203,7 +203,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                   </td>
 
                   {/* Timestamp */}
-                  <td className="py-3.5 px-5 text-slate-500 font-mono text-[11px]">
+                  <td className="py-3.5 px-5 text-slate-500 text-[11px]">
                     {new Date(tx.created_at).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -213,7 +213,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                   {/* Explainability Action */}
                   <td className="py-3.5 px-5 text-right">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#305EFF] group-hover:text-blue-700">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#305EFF] group-hover:underline">
                       <span>Inspect Audit</span>
                       <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                     </span>

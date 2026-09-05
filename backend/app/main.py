@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
@@ -14,12 +15,36 @@ from app.api.tasks import router as tasks_router
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database tables exist and default seed data is present out-of-the-box
+    try:
+        from app.database import engine, SessionLocal
+        from app.models.base import Base
+        from app.models.agent import Agent
+        from scripts.seed import seed_database
+        from sqlalchemy import select
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            agent = db.execute(select(Agent).where(Agent.name == "Personal Assistant")).scalar_one_or_none()
+            if not agent:
+                seed_database(db)
+        finally:
+            db.close()
+    except Exception:
+        pass
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     description="Permissioned payment infrastructure for AI agents",
     version="0.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS middleware for frontend communication

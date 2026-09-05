@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from app.config import get_settings, Settings
 from app.database import get_db
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.schemas.task_types import TaskIntent, TaskResponse
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/api/agent", tags=["AI Agent"])
 def run_agent(
     request: AgentRunRequest,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Run Agent Orchestrator to process a user payment or autonomous commerce request.
@@ -25,7 +27,7 @@ def run_agent(
         if request.force_failure:
             adapter = MockPaymentProvider(mode=MockPaymentMode.DECLINED)
         else:
-            adapter = get_payment_provider()
+            adapter = get_payment_provider(settings=settings)
 
         # Check if natural language request is an autonomous commerce task (flight/restaurant)
         msg_lower = request.message.lower()

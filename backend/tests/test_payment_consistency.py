@@ -239,3 +239,196 @@ class TestPaymentConsistency:
         assert prep_res.status_code == 200
         pdata = prep_res.json()
         assert pdata["already_completed"] is False
+
+    def test_case_a_autonomous_agent_first_then_razorpay(
+        self, client: TestClient, db_session: Session, test_seed_data
+    ):
+        """
+        CASE A:
+        Autonomous Agent -> SUCCESS
+        Then:
+        Razorpay -> ALREADY PAID
+        Verify:
+        transaction count = 1
+        successful payment count = 1
+        """
+        # Ensure policy limits allow the transaction
+        policy = test_seed_data["policy"]
+        policy.max_transaction_amount = 25000.0
+        policy.daily_spending_limit = 50000.0
+        wallet = test_seed_data["wallet"]
+        wallet.per_transaction_limit = 25000.0
+        wallet.daily_spending_limit = 50000.0
+        db_session.commit()
+
+        task_msg = "Book a flight from Ahmedabad to Mumbai under ₹10,000 on September 22"
+
+        # 1. Prepare task
+        prep1 = client.post("/api/tasks/prepare", json={"message": task_msg}).json()
+        assert prep1["already_completed"] is False
+        idem_key = prep1["idempotency_key"]
+
+        # 2. Autonomous Agent executes first
+        exec1 = client.post("/api/tasks", json={"message": task_msg}).json()
+        assert exec1["task_status"] == "COMPLETED"
+        assert exec1["payment_status"] == "SUCCESS"
+        assert exec1["already_completed"] is False
+        tx_id = exec1["transaction_id"]
+
+        # 3. Verify exactly 1 transaction in DB
+        tx_records = db_session.execute(
+            select(Transaction).where(Transaction.idempotency_key == idem_key)
+        ).scalars().all()
+        assert len(tx_records) == 1
+        assert tx_records[0].status == "SUCCESS"
+
+        # 4. Razorpay path check (or prepare check)
+        prep2 = client.post("/api/tasks/prepare", json={"message": task_msg}).json()
+        assert prep2["already_completed"] is True
+        assert prep2["existing_transaction_id"] == tx_id
+        assert prep2["existing_payment_status"] == "SUCCESS"
+
+        # 5. Subsequent execution attempt
+        exec2 = client.post("/api/tasks", json={"message": task_msg}).json()
+        assert exec2["already_completed"] is True
+        assert exec2["transaction_id"] == tx_id
+        assert exec2["task_status"] == "COMPLETED"
+
+        # 6. Verify invariants: transaction count = 1, successful payment count = 1
+        final_tx_records = db_session.execute(
+            select(Transaction).where(Transaction.idempotency_key == idem_key)
+        ).scalars().all()
+        assert len(final_tx_records) == 1
+        assert final_tx_records[0].status == "SUCCESS"
+
+    def test_case_b_razorpay_first_then_autonomous_agent(
+        self, client: TestClient, db_session: Session, test_seed_data
+    ):
+        """
+        CASE B:
+        Razorpay -> SUCCESS
+        Then:
+        Autonomous Agent -> ALREADY PAID
+        Verify:
+        transaction count = 1
+        successful payment count = 1
+        """
+        from app.models.payment_method import PaymentMethod
+        from app.config import Settings, get_settings
+        from app.main import app
+
+        key_secret = "test_secret_for_case_b_12345"
+
+        def override_settings_for_razorpay():
+            return Settings(
+                APP_NAME="AgentPay",
+                APP_ENV="test",
+                DEBUG=True,
+                DATABASE_URL="sqlite:///:memory:",
+                payment_provider="MOCK",
+                razorpay_key_secret=key_secret,
+            )
+
+        app.dependency_overrides[get_settings] = override_settings_for_razorpay
+
+        try:
+            task_msg = "Reserve a table in ITC Narmada, Ahmedabad for 2 people at 8 PM on September 22 under ₹3,000"
+            prep = client.post("/api/tasks/prepare", json={"message": task_msg}).json()
+            idem_key = prep["idempotency_key"]
+
+            pm = db_session.execute(select(PaymentMethod)).scalars().first()
+
+            # Razorpay initiates transaction and verifies payment
+            tx = Transaction(
+                wallet_id=test_seed_data["wallet"].id,
+                agent_id=test_seed_data["agent"].id,
+                payment_method_id=pm.id if pm else None,
+                amount=1000.0,
+                currency="INR",
+                merchant_name="ITC Narmada",
+                category="dining",
+                status="PROCESSING",
+                idempotency_key=idem_key,
+            )
+            db_session.add(tx)
+            db_session.commit()
+            db_session.refresh(tx)
+
+            order_id = "order_case_b_789"
+            payment_id = "pay_case_b_101"
+            msg = f"{order_id}|{payment_id}"
+            sig = hmac.new(key_secret.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).hexdigest()
+
+            verify_res = client.post(
+                "/api/payments/razorpay/verify",
+                json={
+                    "transaction_id": str(tx.id),
+                    "razorpay_order_id": order_id,
+                    "razorpay_payment_id": payment_id,
+                    "razorpay_signature": sig,
+                },
+            )
+            assert verify_res.status_code == 200
+            assert verify_res.json()["success"] is True
+
+            # Verify transaction in DB has payment_provider = RAZORPAY
+            db_session.refresh(tx)
+            assert tx.status == "SUCCESS"
+            assert tx.payment_provider == "RAZORPAY"
+
+            # Check prepare_task returns existing_payment_provider = RAZORPAY
+            prep_after = client.post("/api/tasks/prepare", json={"message": task_msg}).json()
+            assert prep_after["already_completed"] is True
+            assert prep_after["existing_transaction_id"] == str(tx.id)
+            assert prep_after["existing_payment_provider"] == "RAZORPAY"
+
+            # Autonomous Agent executes -> ALREADY PAID
+            exec_res = client.post("/api/tasks", json={"message": task_msg}).json()
+            assert exec_res["already_completed"] is True
+            assert exec_res["transaction_id"] == str(tx.id)
+            assert exec_res["task_status"] == "COMPLETED"
+            assert exec_res["payment_status"] == "SUCCESS"
+
+            # Invariants check: Exactly 1 transaction exists
+            tx_records = db_session.execute(
+                select(Transaction).where(Transaction.idempotency_key == idem_key)
+            ).scalars().all()
+            assert len(tx_records) == 1
+            assert tx_records[0].status == "SUCCESS"
+        finally:
+            from tests.conftest import override_get_settings
+            app.dependency_overrides[get_settings] = override_get_settings
+
+    def test_refresh_preserves_backend_state_and_detects_already_paid(
+        self, client: TestClient, db_session: Session, test_seed_data
+    ):
+        """
+        Verify that after simulating a browser refresh (fresh prepare call with no in-memory state),
+        the backend still detects the completed transaction and prevents double payment.
+        """
+        policy = test_seed_data["policy"]
+        policy.max_transaction_amount = 25000.0
+        policy.daily_spending_limit = 50000.0
+        wallet = test_seed_data["wallet"]
+        wallet.per_transaction_limit = 25000.0
+        wallet.daily_spending_limit = 50000.0
+        db_session.commit()
+
+        task_msg = "Book a flight from Ahmedabad to Mumbai under ₹10,000 on September 22"
+
+        # Complete payment before "refresh"
+        exec1 = client.post("/api/tasks", json={"message": task_msg}).json()
+        assert exec1["task_status"] == "COMPLETED"
+        assert exec1["payment_status"] == "SUCCESS"
+        tx_id = exec1["transaction_id"]
+
+        # Simulate fresh session after refresh: user enters the same prompt
+        prep_after_refresh = client.post("/api/tasks/prepare", json={"message": task_msg}).json()
+        assert prep_after_refresh["already_completed"] is True
+        assert prep_after_refresh["existing_transaction_id"] == tx_id
+
+        # Re-attempting execution after refresh returns Already Paid
+        exec_after_refresh = client.post("/api/tasks", json={"message": task_msg}).json()
+        assert exec_after_refresh["already_completed"] is True
+        assert exec_after_refresh["transaction_id"] == tx_id
+

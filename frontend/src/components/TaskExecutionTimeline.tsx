@@ -151,6 +151,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'UNDERSTANDING_REQUEST',
           title: 'Understanding request',
           status: 'pending',
+          detail: 'Will parse natural language into structured parameters',
         },
         {
           id: 3,
@@ -158,6 +159,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'SEARCHING_OPTIONS',
           title: 'Searching options',
           status: 'pending',
+          detail: 'Will search real-time available inventory',
         },
         {
           id: 4,
@@ -165,6 +167,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'OPTION_SELECTED',
           title: 'Option selected',
           status: 'pending',
+          detail: 'Will evaluate optimal option matching criteria',
         },
         {
           id: 5,
@@ -172,6 +175,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'CREATING_PAYMENT_INTENT',
           title: 'Creating payment intent',
           status: 'pending',
+          detail: 'Will create TransactionIntent payload',
         },
         {
           id: 6,
@@ -179,6 +183,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'POLICY_CHECK',
           title: 'Policy Engine check',
           status: 'pending',
+          detail: 'Will run deterministic policy checks before payment',
         },
         {
           id: 7,
@@ -186,6 +191,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'PAYMENT_PROCESSING',
           title: 'Payment processing',
           status: 'pending',
+          detail: 'Will settle via Primary or Fallback rail',
         },
         {
           id: 8,
@@ -193,6 +199,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           stage: 'FINALIZING_BOOKING',
           title: 'Finalizing booking',
           status: 'pending',
+          detail: 'Will issue booking confirmation & update audit log',
         },
       ]
     }
@@ -385,7 +392,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
 
   const getStepIcon = (status: StepStatus, isCurrentRunning: boolean) => {
     if (isCurrentRunning) {
-      return <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+      return <Loader2 className="w-3.5 h-3.5 text-[#305EFF] animate-spin" />
     }
     switch (status) {
       case 'success':
@@ -395,7 +402,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
       case 'failed':
         return <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
       case 'running':
-        return <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+        return <Loader2 className="w-3.5 h-3.5 text-[#305EFF] animate-spin" />
       case 'pending':
       default:
         return <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -444,40 +451,40 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
   }
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#305EFF]">
             <BrainCircuit className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <h4 className="text-xs font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               Autonomous Execution Timeline
               {loading && (
-                <span className="flex items-center gap-1 text-[10px] text-blue-600 lowercase font-normal">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
+                <span className="flex items-center gap-1 text-[10px] text-[#305EFF] lowercase font-normal">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#305EFF] animate-ping" />
                   executing steps...
                 </span>
               )}
             </h4>
-            <p className="text-[11px] text-slate-500">
-              Deterministic verification state: IDLE → STARTING → UNDERSTANDING_REQUEST → SEARCHING_OPTIONS → OPTION_SELECTED → CREATING_PAYMENT_INTENT → POLICY_CHECK → PAYMENT_PROCESSING → FINALIZING_BOOKING → {taskResult?.task_status || 'OUTCOME'}
+            <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+              Deterministic verification state: IDLE → INTENT → POLICY → SETTLEMENT → AUDIT
             </p>
           </div>
         </div>
 
         {taskResult ? (
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-[#305EFF] border border-blue-100 uppercase">
               {currentStage}
             </span>
             {taskResult.already_completed && (
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 uppercase">
                 IDEMPOTENT REPLAY
               </span>
             )}
             <span
-              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-md border uppercase tracking-wider ${
+              className={`text-[11px] font-medium px-2.5 py-1 rounded-md border uppercase tracking-wide ${
                 taskResult.task_status === 'COMPLETED'
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : taskResult.policy_result === 'REJECTED'
@@ -489,8 +496,8 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
             </span>
           </div>
         ) : (
-          <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
-            {currentStage} • READY
+          <span className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wide">
+            {currentStage} · Ready
           </span>
         )}
       </div>
@@ -502,11 +509,11 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
           return (
             <div
               key={step.id}
-              className={`p-3 rounded-xl border transition-all relative flex flex-col justify-between ${
+              className={`p-3 rounded-lg border transition-colors relative flex flex-col justify-between ${
                 step.status === 'running'
-                  ? 'bg-blue-50/50 border-blue-300 shadow-xs'
+                  ? 'bg-blue-50/50 border-blue-200 shadow-xs'
                   : step.status === 'success'
-                  ? 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
+                  ? 'bg-slate-50/60 border-slate-200 hover:border-slate-300'
                   : step.status === 'rejected'
                   ? 'bg-rose-50/40 border-rose-200'
                   : step.status === 'failed'
@@ -523,11 +530,11 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
                       {getStepIcon(step.status, step.status === 'running')}
                     </div>
                     <span className="text-[10px] font-mono text-slate-400">
-                      #{step.id}
+                      0{step.id}
                     </span>
                   </div>
                   <span
-                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-xs border uppercase ${theme.badge}`}
+                    className={`text-[9px] font-medium px-1.5 py-0.5 rounded border uppercase ${theme.badge}`}
                   >
                     {theme.badgeText}
                   </span>
@@ -539,7 +546,7 @@ export const TaskExecutionTimeline: React.FC<TaskExecutionTimelineProps> = ({
               </div>
 
               {step.detail && (
-                <p className="text-[10px] text-slate-500 mt-2 line-clamp-2 leading-tight bg-white p-1.5 rounded-md border border-slate-200/70 shadow-2xs">
+                <p className="text-[10px] text-slate-500 mt-2 line-clamp-2 leading-tight bg-white p-1.5 rounded border border-slate-200">
                   {step.detail}
                 </p>
               )}

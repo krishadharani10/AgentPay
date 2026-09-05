@@ -280,6 +280,11 @@ def run_day2_verification():
         print("=" * 75)
 
     finally:
+        try:
+            from scripts.seed import seed_database
+            seed_database(db)
+        except Exception:
+            pass
         db.close()
 
 

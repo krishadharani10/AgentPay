@@ -6,7 +6,9 @@ import { TransactionTable } from './components/TransactionTable'
 import { TransactionDetail } from './components/TransactionDetail'
 import { SystemActivity } from './components/SystemActivity'
 import { PolicyCheckMatrix } from './components/PolicyCheckMatrix'
-import { ErrorAlert } from './components/Common'
+import { PaymentFlowDiagram } from './components/PaymentFlowDiagram'
+import { LandingView } from './components/LandingView'
+import { MetricCard, ErrorAlert } from './components/Common'
 import { api } from './api/client'
 import {
   CheckCircle2,
@@ -20,6 +22,9 @@ import {
   Lock,
   Bell,
   ChevronRight,
+  Bot,
+  ShieldCheck,
+  CheckCircle,
 } from 'lucide-react'
 import type {
   HealthResponse,
@@ -157,7 +162,7 @@ export function App() {
 
   const handleRunTask = async (
     message: string,
-    options?: { force_failure?: boolean; retry_if_failed?: boolean }
+    options?: { force_failure?: boolean; retry_if_failed?: boolean; idempotency_key?: string; demo_run_id?: string }
   ): Promise<TaskRunResponse | null> => {
     setAgentLoading(true)
     setError(null)
@@ -166,6 +171,8 @@ export function App() {
         message,
         force_failure: options?.force_failure,
         retry_if_failed: options?.retry_if_failed ?? true,
+        idempotency_key: options?.idempotency_key,
+        demo_run_id: options?.demo_run_id,
       })
 
       await loadData(false)
@@ -197,13 +204,18 @@ export function App() {
     return 'Good evening'
   }
 
+  // Metrics computation for dashboard overview
+  const successfulTxCount = transactions.filter((t) => t.status === 'SUCCESS').length
+  const totalDecisionsCount = auditLogs.filter((l) => l.event_type.includes('POLICY') || l.event_type.includes('DECISION')).length || transactions.length
+  const remainingBudget = wallet?.remaining_daily_budget ?? Math.max(0, (wallet?.daily_spending_limit ?? 15000) - (wallet?.current_daily_spent ?? 0))
+
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased">
-      {/* ── Horizontal Navbar ────────────────────────────────────────────────── */}
+      {/* ── Horizontal Navbar (Req 3, 4) ─────────────────────────────────────── */}
       <Navbar activeTab={activeTab} onSelectTab={setActiveTab} />
 
       {/* ── Main Content ─────────────────────────────────────────────────────── */}
-      <main className="flex-1 bg-[#F7F9FC]">
+      <main className="flex-1 bg-[#F8FAFC]">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
           {/* Error Alert */}
@@ -218,34 +230,72 @@ export function App() {
           )}
 
           {/* ════════════════════════════════════════════════════════════════
-              DASHBOARD
+              LANDING / OVERVIEW (Req 11, 12, 13)
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'landing' && (
+            <LandingView
+              onGoToDashboard={() => setActiveTab('dashboard')}
+              onExploreTasks={() => setActiveTab('tasks')}
+            />
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              DASHBOARD (Req 8, 14)
           ════════════════════════════════════════════════════════════════ */}
           {activeTab === 'dashboard' && (
             <div className="space-y-8">
 
-              {/* Welcome Header */}
-              <div className="flex items-start justify-between">
+              {/* Page Header (Req 8) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight" style={{ color: '#0d1b3e' }}>
-                    {getGreeting()}, Krisha 👋
+                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                    Dashboard
                   </h1>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Welcome to AgentPay — Payments infrastructure for AI agents
+                  <p className="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">
+                    {getGreeting()}, Krisha · Permissioned payment infrastructure control center
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => loadData()}
                   disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors cursor-pointer disabled:opacity-50"
-                  title="Refresh data"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer shadow-xs disabled:opacity-50 self-start sm:self-auto"
+                  title="Refresh wallet & transaction data"
                 >
-                  <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Refresh</span>
+                  <RotateCw className={`w-3.5 h-3.5 text-[#305EFF] ${loading ? 'animate-spin' : ''}`} />
+                  <span>Refresh Data</span>
                 </button>
               </div>
 
-              {/* Row 1: Wallet + Agent Console */}
+              {/* Overview Metrics Row (Req 8) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard
+                  label="Active Agents"
+                  value="1 Configured"
+                  subvalue="Autonomous Assistant"
+                  icon={<Bot className="w-4 h-4" />}
+                />
+                <MetricCard
+                  label="Available Budget"
+                  value={`₹${remainingBudget.toLocaleString('en-IN')}`}
+                  subvalue={`Daily cap: ₹${(wallet?.daily_spending_limit ?? 15000).toLocaleString('en-IN')}`}
+                  icon={<CreditCard className="w-4 h-4" />}
+                />
+                <MetricCard
+                  label="Successful Payments"
+                  value={`${successfulTxCount}`}
+                  subvalue={`${transactions.length} total intents`}
+                  icon={<CheckCircle className="w-4 h-4" />}
+                />
+                <MetricCard
+                  label="Policy Decisions"
+                  value={`${totalDecisionsCount}`}
+                  subvalue="100% Deterministic"
+                  icon={<ShieldCheck className="w-4 h-4" />}
+                />
+              </div>
+
+              {/* Row 1: Wallet + Agent Console (Core Hero Experience) */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 <div className="lg:col-span-4">
                   <WalletCard
@@ -265,19 +315,40 @@ export function App() {
                 </div>
               </div>
 
-              {/* Row 2: Recent Activity (compact — 5 rows, no search) */}
+              {/* Row 2: Trust Principle Banner (Req 14) */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#305EFF] shrink-0 mt-0.5">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-900 uppercase tracking-wider">
+                      The AgentPay Trust Principle
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed font-normal">
+                      “The AI is autonomous, but the money is controlled.” The LLM may formulate structured payment requests, but the deterministic Policy Engine governs movement of funds.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Recent Activity (compact summary — full audit trail accessible via Audit tab) */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-semibold" style={{ color: '#0d1b3e' }}>
-                    Recent Activity
-                  </h2>
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">
+                      Recent Activity
+                    </h2>
+                    <p className="text-xs text-slate-500 font-normal mt-0.5">
+                      Authorized autonomous payments & policy events
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setActiveTab('transactions')}
-                    className="text-sm font-medium transition-colors cursor-pointer"
-                    style={{ color: '#305EFF' }}
+                    className="text-xs font-medium text-[#305EFF] hover:underline cursor-pointer"
                   >
-                    View all →
+                    View all transactions →
                   </button>
                 </div>
                 <RecentActivity
@@ -285,24 +356,6 @@ export function App() {
                   loading={loading}
                   onSelect={handleSelectTransaction}
                 />
-              </div>
-
-              {/* Row 3: Trust Summary (compact) */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-semibold" style={{ color: '#0d1b3e' }}>
-                    Audit & Trust
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('audit')}
-                    className="text-sm font-medium transition-colors cursor-pointer"
-                    style={{ color: '#305EFF' }}
-                  >
-                    View all →
-                  </button>
-                </div>
-                <SystemActivity logs={auditLogs} loading={loading} />
               </div>
             </div>
           )}
@@ -363,11 +416,11 @@ export function App() {
                 <WalletCard wallet={wallet} loading={loading} onWalletUpdated={loadData} />
 
                 {/* Wallet Security Guarantees */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-                  <h3 className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)] space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-900">
                     Security Guarantees
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 font-normal">
                     Deterministic controls enforced by the AgentPay policy engine:
                   </p>
                   <div className="space-y-3">
@@ -387,12 +440,12 @@ export function App() {
                     ].map((item) => (
                       <div
                         key={item.title}
-                        className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100"
+                        className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200"
                       >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                         <div>
-                          <div className="text-xs font-semibold text-slate-800">{item.title}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">{item.detail}</div>
+                          <div className="text-xs font-semibold text-slate-900">{item.title}</div>
+                          <div className="text-xs text-slate-500 mt-0.5 font-normal">{item.detail}</div>
                         </div>
                       </div>
                     ))}
@@ -416,7 +469,7 @@ export function App() {
               />
 
               {/* Policy rules matrix */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
                 <PolicyCheckMatrix
                   rulesChecked={[
                     { rule: 'Daily Limit Check', passed: true, details: 'Total today under daily limit' },
@@ -447,18 +500,16 @@ export function App() {
                   {
                     label: 'Allowed Categories',
                     value: 'Travel, Dining, Utilities',
-                    color: 'text-emerald-600',
-                    small: true,
+                    color: 'text-emerald-700',
                   },
                   {
                     label: 'Blocked Categories',
                     value: 'Gambling, Crypto, Adult',
-                    color: 'text-rose-500',
-                    small: true,
+                    color: 'text-rose-600',
                   },
                 ].map((item) => (
-                  <div key={item.label} className="bg-white border border-slate-200 rounded-xl p-4">
-                    <div className="text-xs text-slate-500 mb-1">{item.label}</div>
+                  <div key={item.label} className="bg-white border border-slate-200 rounded-xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
+                    <div className="text-xs text-slate-500 mb-1 font-normal">{item.label}</div>
                     <div className={`font-semibold text-sm ${item.color}`}>{item.value}</div>
                   </div>
                 ))}
@@ -484,7 +535,7 @@ export function App() {
           )}
 
           {/* ════════════════════════════════════════════════════════════════
-              AUDIT & TRUST
+              AUDIT & TRUST (Req 10, 14)
           ════════════════════════════════════════════════════════════════ */}
           {activeTab === 'audit' && (
             <div className="space-y-6">
@@ -494,17 +545,14 @@ export function App() {
               />
 
               {/* Core principle callout */}
-              <div
-                className="rounded-xl border p-5"
-                style={{ backgroundColor: '#EFF4FF', borderColor: '#c7d8ff' }}
-              >
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5">
                 <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 mt-0.5 shrink-0" style={{ color: '#305EFF' }} />
+                  <Shield className="w-5 h-5 text-[#305EFF] mt-0.5 shrink-0" />
                   <div>
-                    <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+                    <div className="text-sm font-semibold text-slate-900">
                       The AgentPay Trust Principle
                     </div>
-                    <div className="text-sm text-slate-600 mt-1 leading-relaxed">
+                    <div className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed font-normal">
                       The AI agent may <strong>request</strong> a payment.{' '}
                       <strong>AgentPay's Policy Engine</strong> decides whether money may move —
                       never the LLM alone.
@@ -513,6 +561,10 @@ export function App() {
                 </div>
               </div>
 
+              {/* Payment Flow Diagram */}
+              <PaymentFlowDiagram />
+
+              {/* Live Audit Stream */}
               <SystemActivity logs={auditLogs} loading={loading} />
             </div>
           )}
@@ -528,27 +580,27 @@ export function App() {
               />
 
               {/* Identity card */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center gap-4 pb-5 border-b border-slate-100">
                   <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg shrink-0"
                     style={{ backgroundColor: '#305EFF' }}
                   >
                     K
                   </div>
                   <div>
-                    <div className="text-lg font-bold" style={{ color: '#0d1b3e' }}>
+                    <div className="text-base font-semibold text-slate-900">
                       Krisha
                     </div>
-                    <div className="text-sm text-slate-500">Personal Account</div>
-                    <div className="inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full">
+                    <div className="text-xs text-slate-500">Personal Account</div>
+                    <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-xs font-medium text-emerald-700">Active</span>
+                      <span className="text-[11px] font-medium text-emerald-700">Active</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-5 space-y-4">
+                <div className="pt-5 space-y-3.5">
                   <ProfileRow icon={<User className="w-4 h-4" />} label="Name" value="Krisha" />
                   <ProfileRow
                     icon={<CreditCard className="w-4 h-4" />}
@@ -568,8 +620,8 @@ export function App() {
               </div>
 
               {/* Notification preferences */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6">
-                <h3 className="text-sm font-semibold mb-4" style={{ color: '#0d1b3e' }}>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">
                   Preferences
                 </h3>
                 <div className="space-y-3">
@@ -581,7 +633,7 @@ export function App() {
                     <div key={pref.label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
                       <div className="flex items-center gap-2.5">
                         <Bell className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-sm text-slate-700">{pref.label}</span>
+                        <span className="text-xs text-slate-700">{pref.label}</span>
                       </div>
                       <span className="text-xs font-medium text-emerald-600">{pref.value}</span>
                     </div>
@@ -627,9 +679,9 @@ export function App() {
                 title="Security"
                 description="Zero-compromise safety invariants"
               >
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="text-sm font-medium text-slate-800">LLM Authorization Isolation</div>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="text-xs font-semibold text-slate-900">LLM Authorization Isolation</div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed font-normal">
                     The LLM may only request payments. The deterministic Policy Engine governs movement of funds.
                   </p>
                 </div>
@@ -668,14 +720,14 @@ export function App() {
                         { id: '2', type: 'CARD_TOKEN', token_or_alias: 'Corporate Visa •••• 4082', is_primary: false, priority: 2 },
                       ]
                   ).map((pm, i) => (
-                    <div key={pm.id || i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+                    <div key={pm.id || i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-2.5">
                         {pm.type === 'UPI_VPA' ? (
-                          <QrCode className="w-3.5 h-3.5 text-emerald-500" />
+                          <QrCode className="w-3.5 h-3.5 text-emerald-600" />
                         ) : (
-                          <CreditCard className="w-3.5 h-3.5" style={{ color: '#305EFF' }} />
+                          <CreditCard className="w-3.5 h-3.5 text-[#305EFF]" />
                         )}
-                        <span className="text-sm text-slate-700 font-medium">{pm.token_or_alias}</span>
+                        <span className="text-xs text-slate-800 font-medium">{pm.token_or_alias}</span>
                       </div>
                       <span className={`text-xs font-medium ${pm.is_primary || pm.priority === 1 ? 'text-[#305EFF]' : 'text-slate-400'}`}>
                         {pm.is_primary || pm.priority === 1 ? 'Primary' : 'Fallback'}
@@ -699,22 +751,24 @@ export function App() {
       )}
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-5">
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
+      <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-2 text-slate-700">
             <div
-              className="w-5 h-5 rounded flex items-center justify-center"
+              className="w-5 h-5 rounded-md flex items-center justify-center text-white shrink-0"
               style={{ backgroundColor: '#305EFF' }}
             >
-              <Shield className="w-3 h-3 text-white" />
+              <Shield className="w-3 h-3" />
             </div>
-            <span>AgentPay — Permissioned Autonomous Payment Infrastructure</span>
+            <span className="font-medium">© 2026 AgentPay · Built by Krisha Dharani</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${health?.status === 'ok' ? 'bg-emerald-500' : 'bg-slate-300'}`}
-            />
-            <span>{health?.status === 'ok' ? 'System Online' : 'Connecting...'}</span>
+          <div className="flex items-center gap-2 text-slate-400">
+            <span>Permissioned AI Agent Payment Infrastructure</span>
+            <span>·</span>
+            <span className="flex items-center gap-1.5 font-medium text-emerald-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              {health?.status === 'ok' ? 'System Online' : 'Connecting...'}
+            </span>
           </div>
         </div>
       </footer>
@@ -726,19 +780,17 @@ export function App() {
    SMALL INLINE COMPONENTS (dashboard + settings helpers)
 ══════════════════════════════════════════════════════════════════════════ */
 
-// Page header used across all non-dashboard tabs
 function PageHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="pb-2">
-      <h1 className="text-xl font-bold tracking-tight" style={{ color: '#0d1b3e' }}>
+      <h1 className="text-xl font-bold tracking-tight text-slate-900">
         {title}
       </h1>
-      <p className="text-sm text-slate-500 mt-0.5">{description}</p>
+      <p className="text-xs sm:text-sm text-slate-500 mt-0.5">{description}</p>
     </div>
   )
 }
 
-// Compact recent-activity list for the dashboard (no search, max 5 rows)
 function RecentActivity({
   transactions,
   loading,
@@ -752,10 +804,10 @@ function RecentActivity({
 
   const statusColor = (status: string) => {
     const s = status.toUpperCase()
-    if (s === 'SUCCESS' || s === 'APPROVED') return 'text-emerald-600 bg-emerald-50'
-    if (s === 'REJECTED' || s === 'FAILED') return 'text-rose-600 bg-rose-50'
-    if (s === 'PENDING' || s === 'PAYMENT_PENDING') return 'text-amber-600 bg-amber-50'
-    return 'text-slate-500 bg-slate-100'
+    if (s === 'SUCCESS' || s === 'APPROVED') return 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    if (s === 'REJECTED' || s === 'FAILED') return 'text-rose-700 bg-rose-50 border-rose-200'
+    if (s === 'PENDING' || s === 'PAYMENT_PENDING') return 'text-amber-700 bg-amber-50 border-amber-200'
+    return 'text-slate-600 bg-slate-100 border-slate-200'
   }
 
   const formatDate = (iso: string) => {
@@ -774,7 +826,7 @@ function RecentActivity({
 
   if (loading) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+      <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
         {[1, 2, 3].map((i) => (
           <div key={i} className="px-5 py-4 flex items-center gap-4 animate-pulse">
             <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />
@@ -791,14 +843,14 @@ function RecentActivity({
 
   if (recent.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl px-5 py-10 text-center text-sm text-slate-400">
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-10 text-center text-xs text-slate-400 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
         No transactions yet. Run an agent task to create one.
       </div>
     )
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+    <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
       {recent.map((tx) => (
         <button
           key={tx.id}
@@ -806,19 +858,19 @@ function RecentActivity({
           onClick={() => onSelect(tx)}
           className="w-full px-5 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors cursor-pointer text-left"
         >
-          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-            <CreditCard className="w-4 h-4 text-slate-400" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#305EFF] shrink-0">
+            <CreditCard className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-slate-800 truncate">{tx.merchant_name}</div>
-            <div className="text-xs text-slate-400 mt-0.5">{formatDate(tx.created_at)}</div>
+            <div className="text-xs font-semibold text-slate-900 truncate">{tx.merchant_name}</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">{formatDate(tx.created_at)}</div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+            <div className="text-xs font-semibold text-slate-900">
               ₹{tx.amount.toLocaleString('en-IN')}
             </div>
             <span
-              className={`inline-block text-xs font-medium px-1.5 py-0.5 rounded mt-0.5 ${statusColor(tx.status)}`}
+              className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded border mt-0.5 ${statusColor(tx.status)}`}
             >
               {tx.status}
             </span>
@@ -830,7 +882,6 @@ function RecentActivity({
   )
 }
 
-// Profile row helper
 function ProfileRow({
   icon,
   label,
@@ -841,17 +892,16 @@ function ProfileRow({
   value: string
 }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+    <div className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
       <div className="flex items-center gap-2.5 text-slate-500">
         <span>{icon}</span>
-        <span className="text-sm">{label}</span>
+        <span className="text-xs">{label}</span>
       </div>
-      <span className="text-sm font-medium text-slate-800">{value}</span>
+      <span className="text-xs font-medium text-slate-900">{value}</span>
     </div>
   )
 }
 
-// Settings section card
 function SettingsSection({
   icon,
   title,
@@ -864,19 +914,18 @@ function SettingsSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] space-y-4">
       <div className="flex items-center gap-2.5">
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: '#EFF4FF', color: '#305EFF' }}
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-[#305EFF] bg-blue-50 border border-blue-100"
         >
           {icon}
         </div>
         <div>
-          <div className="text-sm font-semibold" style={{ color: '#0d1b3e' }}>
+          <div className="text-xs font-semibold text-slate-900">
             {title}
           </div>
-          <div className="text-xs text-slate-500">{description}</div>
+          <div className="text-[11px] text-slate-500">{description}</div>
         </div>
       </div>
       {children}
@@ -884,7 +933,6 @@ function SettingsSection({
   )
 }
 
-// Settings key-value row
 function SettingsRow({
   label,
   value,
@@ -895,9 +943,9 @@ function SettingsRow({
   valueColor?: string
 }) {
   return (
-    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-      <span className="text-sm text-slate-600 font-medium">{label}</span>
-      <span className={`text-sm font-semibold ${valueColor}`}>{value}</span>
+    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+      <span className="text-xs text-slate-600 font-medium">{label}</span>
+      <span className={`text-xs font-semibold ${valueColor}`}>{value}</span>
     </div>
   )
 }

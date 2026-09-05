@@ -45,8 +45,13 @@ from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionStatus
+from app.models.wallet import Wallet
+from app.models.payment_method import PaymentMethod
+from app.models.payment_attempt import PaymentAttempt
 from app.schemas.agent_types import TransactionIntent, AgentDecision, PaymentRequest
+from app.config import get_settings
+from app.services.payment_adapter import RazorpayPaymentProvider, PaymentExecutionRequest
 from app.schemas.task_types import (
     TaskType,
     TaskIntent,
@@ -148,17 +153,24 @@ class TaskOrchestrator:
         *,
         message: str,
         agent_id: Optional[uuid.UUID] = None,
+        demo_run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Prepares a commercial task without executing payment:
         1. Parses natural-language message into TaskIntent
         2. Queries domain inventory / tool
         3. Computes deterministic task idempotency key
-        4. Checks if an existing transaction is already completed in database
-        5. Checks policy limit compliance preview
+        4. Optionally scopes the key with demo_run_id for fresh repeat demo runs
+        5. Checks if an existing transaction is already completed in database
+        6. Checks policy limit compliance preview
         """
         task_intent: TaskIntent = self.llm_provider.parse_task_intent(message)
         idempotency_key = self.compute_task_idempotency_key(task_intent)
+        # When demo_run_id is provided, scope the key to create a fresh demo execution
+        # without touching any previously completed transactions.
+        if demo_run_id:
+            suffix = str(demo_run_id).strip()[:12]
+            idempotency_key = f"{idempotency_key}_r{suffix}"
 
         # Check existing transaction
         existing_tx = db.execute(
@@ -168,6 +180,7 @@ class TaskOrchestrator:
         already_completed = existing_tx is not None and existing_tx.status == "SUCCESS"
         existing_tx_id = str(existing_tx.id) if existing_tx else None
         existing_status = existing_tx.status if existing_tx else None
+        existing_payment_provider = existing_tx.payment_provider if existing_tx else None
 
         # Resolve selected option
         selected_dict: Optional[Dict[str, Any]] = None
@@ -243,9 +256,9 @@ class TaskOrchestrator:
         try:
             wallet_policy = get_wallet_policy(db, agent_id=agent_id)
             if est_amount is not None:
-                if est_amount > wallet_policy.get("per_transaction_limit", 25000.0):
+                if est_amount > wallet_policy.get("per_transaction_limit", 8000.0):
                     policy_compliant = False
-                elif est_amount > wallet_policy.get("remaining_daily_budget", 50000.0):
+                elif est_amount > wallet_policy.get("remaining_daily_budget", 15000.0):
                     policy_compliant = False
         except Exception:
             policy_compliant = True
@@ -262,6 +275,7 @@ class TaskOrchestrator:
             "already_completed": already_completed,
             "existing_transaction_id": existing_tx_id,
             "existing_payment_status": existing_status,
+            "existing_payment_provider": existing_payment_provider,
             "estimated_amount": est_amount,
             "merchant_name": merchant_name,
             "policy_compliant": policy_compliant,
@@ -277,11 +291,18 @@ class TaskOrchestrator:
         force_failure: bool = False,
         retry_if_failed: bool = False,
         idempotency_key: Optional[str] = None,
+        demo_run_id: Optional[str] = None,
+        payment_mode: Optional[str] = None,
     ) -> TaskResponse:
         """
         Executes a TaskIntent through the appropriate commerce tool, converts to
         TransactionIntent, and authorizes/executes via the existing deterministic
         Policy Engine and PaymentService.
+
+        demo_run_id: when provided and idempotency_key is not explicitly passed,
+        a run-scoped suffix is appended to the computed idempotency key.  This
+        allows repeat demo executions to create NEW transactions while leaving
+        all previously completed transactions fully immutable.
 
         Audit lifecycle (persisted to existing AuditLog table):
             TASK_RECEIVED → SEARCH_PERFORMED → OPTIONS_FOUND / OPTIONS_NOT_FOUND
@@ -297,6 +318,15 @@ class TaskOrchestrator:
             agent = db.execute(select(Agent).limit(1)).scalar_one_or_none()
 
         resolved_agent_id = agent.id if agent else None
+
+        # ── Apply demo_run_id scope to idempotency key ────────────────────────
+        # When demo_run_id is provided and no explicit idempotency_key was given,
+        # append the run-scoped suffix so this execution uses a fresh transaction
+        # scope, leaving any previously completed transaction immutable.
+        if demo_run_id and not idempotency_key:
+            base_key = self.compute_task_idempotency_key(task_intent)
+            suffix = str(demo_run_id).strip()[:12]
+            idempotency_key = f"{base_key}_r{suffix}"
 
         # ── Lifecycle Event 1: TASK_RECEIVED ─────────────────────────────────
         self._record_audit(
@@ -350,6 +380,7 @@ class TaskOrchestrator:
                 force_failure=force_failure,
                 retry_if_failed=retry_if_failed,
                 idempotency_key=idempotency_key,
+                payment_mode=payment_mode,
             )
 
         elif task_intent.task_type == TaskType.RESERVE_RESTAURANT:
@@ -362,6 +393,7 @@ class TaskOrchestrator:
                 force_failure=force_failure,
                 retry_if_failed=retry_if_failed,
                 idempotency_key=idempotency_key,
+                payment_mode=payment_mode,
             )
 
         else:
@@ -386,6 +418,7 @@ class TaskOrchestrator:
                 force_failure=force_failure,
                 retry_if_failed=retry_if_failed,
                 idempotency_key=idempotency_key,
+                payment_mode=payment_mode,
             )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -403,6 +436,7 @@ class TaskOrchestrator:
         force_failure: bool,
         retry_if_failed: bool,
         idempotency_key: Optional[str] = None,
+        payment_mode: Optional[str] = None,
     ) -> TaskResponse:
         """
         Complete flight booking flow:
@@ -621,6 +655,7 @@ class TaskOrchestrator:
             force_failure=force_failure,
             retry_if_failed=retry_if_failed,
             idempotency_key=idempotency_key,
+            payment_mode=payment_mode,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -638,6 +673,7 @@ class TaskOrchestrator:
         force_failure: bool,
         retry_if_failed: bool,
         idempotency_key: Optional[str] = None,
+        payment_mode: Optional[str] = None,
     ) -> TaskResponse:
         """
         Complete restaurant reservation flow:
@@ -858,6 +894,7 @@ class TaskOrchestrator:
             force_failure=force_failure,
             retry_if_failed=retry_if_failed,
             idempotency_key=idempotency_key,
+            payment_mode=payment_mode,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -877,6 +914,7 @@ class TaskOrchestrator:
         force_failure: bool,
         retry_if_failed: bool,
         idempotency_key: Optional[str] = None,
+        payment_mode: Optional[str] = None,
     ) -> TaskResponse:
         """
         Submits a TransactionIntent through the authoritative Policy Engine
@@ -945,6 +983,7 @@ class TaskOrchestrator:
                 remaining_daily_budget=wallet_policy.get("remaining_daily_budget"),
                 audit_trail=audit_trail,
                 already_completed=True,
+                payment_provider=existing_tx.payment_provider,
             )
 
         # ── Lifecycle Event 6: POLICY_CHECK ──────────────────────────────────
@@ -1192,6 +1231,7 @@ class TaskOrchestrator:
             rules_checked=eval_result["rules_checked"],
             remaining_daily_budget=eval_result["remaining_daily_budget"],
             audit_trail=audit_trail,
+            payment_provider=payment_result.get("payment_provider"),
         )
 
     # ─────────────────────────────────────────────────────────────────────────

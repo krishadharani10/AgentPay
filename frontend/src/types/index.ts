@@ -227,6 +227,7 @@ export interface TaskRunRequest {
   force_failure?: boolean
   retry_if_failed?: boolean
   idempotency_key?: string
+  demo_run_id?: string
 }
 
 export interface TaskRunResponse {
@@ -256,11 +257,13 @@ export interface TaskRunResponse {
   merchant_name?: string | null
   audit_trail?: Array<Record<string, unknown>> | null
   already_completed?: boolean
+  payment_provider?: string | null
 }
 
 export interface TaskPrepareRequest {
   message: string
   agent_id?: string
+  demo_run_id?: string
 }
 
 export interface TaskPrepareResponse {
@@ -283,8 +286,10 @@ export interface TaskPrepareResponse {
   already_completed: boolean
   existing_transaction_id?: string | null
   existing_payment_status?: string | null
+  existing_payment_provider?: string | null
   estimated_amount?: number | null
   merchant_name?: string | null
   policy_compliant: boolean
   summary: string
 }
+

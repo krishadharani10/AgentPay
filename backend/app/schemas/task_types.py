@@ -167,6 +167,7 @@ class TaskResponse(BaseModel):
     remaining_daily_budget: Optional[float] = None
     audit_trail: Optional[List[Dict[str, Any]]] = None
     already_completed: bool = False
+    payment_provider: Optional[str] = None
 
 
 class TaskRunRequest(BaseModel):
@@ -176,6 +177,16 @@ class TaskRunRequest(BaseModel):
     force_failure: bool = Field(default=False, description="Force payment provider decline for testing fallback")
     retry_if_failed: bool = Field(default=False, description="Enable automatic payment fallback/retry on rail failure")
     idempotency_key: Optional[str] = Field(default=None, description="Optional deterministic task idempotency key")
+    demo_run_id: Optional[str] = Field(
+        default=None,
+        description="Optional demo-run scope suffix. When provided, appended to the idempotency key to create a "
+                    "fresh execution scope for repeat demos. Old completed transactions remain immutable."
+    )
+    payment_mode: Optional[str] = Field(
+        default=None,
+        description="Payment execution mode: 'RAZORPAY_CHECKOUT' (prepares order without confirming until verified) "
+                    "or 'AUTONOMOUS' (direct autonomous agent rail execution)."
+    )
 
 
 class TaskRunResponse(BaseModel):
@@ -189,20 +200,28 @@ class TaskRunResponse(BaseModel):
     task_constraint_result: str = Field(..., description="PASS | FAIL | NOT_APPLICABLE")
     policy_result: str = Field(..., description="APPROVED | REJECTED | NOT_EVALUATED")
     transaction_id: Optional[str] = Field(default=None, description="ID of created payment transaction in database")
-    payment_status: str = Field(..., description="SUCCESS | FAILED | NOT_ATTEMPTED | REJECTED")
-    task_status: str = Field(..., description="COMPLETED | REJECTED | TOOL_FAILED | INVALID_INTENT | PAYMENT_FAILED")
+    payment_status: str = Field(..., description="SUCCESS | FAILED | NOT_ATTEMPTED | REJECTED | PAYMENT_PENDING")
+    task_status: str = Field(..., description="COMPLETED | REJECTED | TOOL_FAILED | INVALID_INTENT | PAYMENT_FAILED | PAYMENT_PENDING")
     final_message: str
     rules_checked: Optional[List[Dict[str, Any]]] = None
     amount: Optional[float] = None
     merchant_name: Optional[str] = None
     audit_trail: Optional[List[Dict[str, Any]]] = None
     already_completed: bool = Field(default=False, description="True if task was already completed by a prior execution")
+    payment_provider: Optional[str] = Field(default=None, description="Payment provider used (e.g. RAZORPAY, MOCK)")
+    order_id: Optional[str] = Field(default=None, description="Razorpay order ID (e.g. order_XXXX) for checkout")
+    provider_payment_id: Optional[str] = Field(default=None, description="Provider payment or order ID")
 
 
 class TaskPrepareRequest(BaseModel):
     """Request payload for POST /api/tasks/prepare."""
     message: str = Field(..., min_length=1, description="Natural language request or instruction")
     agent_id: Optional[UUID] = Field(default=None, description="Optional agent UUID")
+    demo_run_id: Optional[str] = Field(
+        default=None,
+        description="Optional demo-run scope suffix. When provided, appended to the idempotency key so that "
+                    "the prepared task represents a fresh execution scope rather than the already-completed one."
+    )
 
 
 class TaskPrepareResponse(BaseModel):
@@ -214,9 +233,11 @@ class TaskPrepareResponse(BaseModel):
     already_completed: bool = Field(default=False, description="True if task already has a successful transaction")
     existing_transaction_id: Optional[str] = Field(default=None, description="Existing transaction ID if already completed")
     existing_payment_status: Optional[str] = Field(default=None, description="Status of existing payment transaction")
+    existing_payment_provider: Optional[str] = Field(default=None, description="Provider used for existing payment (e.g. RAZORPAY, MOCK)")
     estimated_amount: Optional[float] = Field(default=None, description="Target transaction amount")
     merchant_name: Optional[str] = Field(default=None, description="Target merchant or airline or restaurant")
     policy_compliant: bool = Field(default=True, description="True if within wallet and policy limits")
     summary: str = Field(..., description="Human readable summary of prepared task")
+
 
 

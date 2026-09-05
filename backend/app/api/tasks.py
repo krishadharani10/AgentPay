@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import get_settings, Settings
 from app.schemas.task_types import (
     TaskType,
     TaskIntent,
@@ -36,6 +37,7 @@ router = APIRouter(prefix="/api/tasks", tags=["Autonomous Tasks"])
 def prepare_autonomous_task(
     request: TaskPrepareRequest,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> TaskPrepareResponse:
     """
     Prepares an autonomous commercial task without executing payment:
@@ -51,13 +53,14 @@ def prepare_autonomous_task(
         )
 
     try:
-        adapter = get_payment_provider()
+        adapter = get_payment_provider(settings=settings)
         llm_provider = MockLLMProvider()
         orchestrator = TaskOrchestrator(adapter=adapter, llm_provider=llm_provider)
         prep_data = orchestrator.prepare_task(
             db,
             message=request.message,
             agent_id=request.agent_id,
+            demo_run_id=request.demo_run_id,
         )
         return TaskPrepareResponse(**prep_data)
     except ValueError as err:
@@ -71,6 +74,7 @@ def prepare_autonomous_task(
 def execute_autonomous_task(
     request: TaskRunRequest,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> TaskRunResponse:
     """
     Execute a natural-language autonomous commercial task:
@@ -92,7 +96,7 @@ def execute_autonomous_task(
         if request.force_failure:
             adapter = MockPaymentProvider(mode=MockPaymentMode.DECLINED)
         else:
-            adapter = get_payment_provider()
+            adapter = get_payment_provider(settings=settings)
 
         llm_provider = MockLLMProvider()
         task_intent: TaskIntent = llm_provider.parse_task_intent(request.message)
@@ -105,6 +109,7 @@ def execute_autonomous_task(
             force_failure=request.force_failure,
             retry_if_failed=request.retry_if_failed,
             idempotency_key=request.idempotency_key,
+            demo_run_id=request.demo_run_id,
         )
 
         # ── Map Task Constraint Result ──
@@ -173,6 +178,7 @@ def execute_autonomous_task(
             merchant_name=task_result.merchant_name,
             audit_trail=task_result.audit_trail,
             already_completed=getattr(task_result, "already_completed", False),
+            payment_provider=getattr(task_result, "payment_provider", None),
         )
 
     except ValueError as err:

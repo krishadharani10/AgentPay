@@ -92,20 +92,20 @@ def run_live_verification():
         assert res_b["approved"] is True, "Expected ₹3,000 Netflix to be approved (limit is ₹5,000)"
 
         # 6. Test Scenario C: ₹6,000 payment -> REJECTED (Exceeds ₹5,000 limit)
-        print("\n6️⃣  Testing Policy Evaluation: ₹6,000 MakeMyTrip (over per-tx limit)...")
+        print("\n6️⃣  Testing Policy Evaluation: ₹10,000 MakeMyTrip (over per-tx limit of ₹8,000)...")
         payload_over_limit = {
             "merchant_name": "MakeMyTrip",
-            "amount": 6000.0,
+            "amount": 10000.0,
             "category": "travel",
             "currency": "INR",
-            "idempotency_key": "live_test_mmt_6000",
+            "idempotency_key": "live_test_mmt_10000",
         }
         resp = client.post("/api/policy/evaluate", json=payload_over_limit)
         assert resp.status_code == 200, f"Failed: {resp.text}"
         res_c = resp.json()
         print(f"   ✓ Result: Approved={res_c['approved']}, Decision={res_c['decision_code']}")
         print(f"   ✓ Reason: {res_c['reason']}")
-        assert res_c["approved"] is False, "Expected ₹6,000 to be rejected"
+        assert res_c["approved"] is False, "Expected ₹10,000 to be rejected"
         assert res_c["decision_code"] in ["TX_LIMIT_EXCEEDED", "MULTIPLE_POLICY_VIOLATIONS"]
 
         # 7. Test Scenario D: ₹500 Blocked Category (Crypto) -> REJECTED

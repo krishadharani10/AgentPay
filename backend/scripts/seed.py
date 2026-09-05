@@ -229,7 +229,13 @@ def seed_database(db: Optional[Session] = None):
         else:
             print("  • Payment Methods exist")
 
-        # 5. Seed Policy
+        # 5. Seed Policy (Enforce authoritative ₹8,000 limit and deactivate any obsolete test policies)
+        all_agent_policies = db.execute(select(Policy).where(Policy.agent_id == agent.id)).scalars().all()
+        for p in all_agent_policies:
+            if p.name != "Autonomous Utility & Subscriptions Policy":
+                p.is_active = False
+        db.flush()
+
         policy = db.execute(
             select(Policy).where(Policy.agent_id == agent.id, Policy.name == "Autonomous Utility & Subscriptions Policy")
         ).scalar_one_or_none()
@@ -255,12 +261,11 @@ def seed_database(db: Optional[Session] = None):
             policy.max_transaction_amount = 8000.0
             policy.daily_spending_limit = 15000.0
             policy.allowed_categories = ["utilities", "subscriptions", "travel", "shopping", "dining"]
-
             policy.blocked_categories = ["gambling", "crypto"]
             policy.wallet_enabled = True
             policy.is_active = True
             db.flush()
-            print(f"  • Policy updated: {policy.name}")
+            print(f"  • Policy updated: {policy.name} (max_tx: ₹{policy.max_transaction_amount:,.2f})")
 
         # 6. Seed Demo Merchants (Torrent Power, Netflix, Spotify, MakeMyTrip, Amazon)
         merchant_map = {}
