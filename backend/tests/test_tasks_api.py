@@ -57,6 +57,7 @@ class TestTasksApi:
         assert data["merchant_name"] == "AirDemo"
         assert data["selected_option"] is not None
         assert data["selected_option"]["flight_number"] == "AP701"
+        assert data.get("provider_payment_id") is not None
         assert "Flight successfully booked" in data["final_message"]
 
         # Verify transaction in database

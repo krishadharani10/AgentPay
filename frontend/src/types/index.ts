@@ -258,6 +258,8 @@ export interface TaskRunResponse {
   audit_trail?: Array<Record<string, unknown>> | null
   already_completed?: boolean
   payment_provider?: string | null
+  provider_payment_id?: string | null
+  order_id?: string | null
 }
 
 export interface TaskPrepareRequest {

@@ -179,6 +179,8 @@ def execute_autonomous_task(
             audit_trail=task_result.audit_trail,
             already_completed=getattr(task_result, "already_completed", False),
             payment_provider=getattr(task_result, "payment_provider", None),
+            order_id=getattr(task_result, "order_id", None) or getattr(task_result, "provider_payment_id", None),
+            provider_payment_id=getattr(task_result, "provider_payment_id", None),
         )
 
     except ValueError as err:

@@ -269,7 +269,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
       let txId = lastTaskResult?.transaction_id || preparedTask?.existing_transaction_id
       let amt = lastTaskResult?.amount || preparedTask?.estimated_amount || 7450
       let merchant = lastTaskResult?.merchant_name || preparedTask?.merchant_name || 'AirDemo'
-      let orderId = lastTaskResult?.selected_option?.order_id
+      let orderId = lastTaskResult?.provider_payment_id
       const idemKey = preparedTask?.idempotency_key
 
       // If we don't have a transaction ID yet, execute task to create the authorized TransactionIntent
@@ -316,7 +316,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
           txId = res.transaction_id || undefined
           amt = res.amount || amt
           merchant = res.merchant_name || merchant
-          orderId = res.selected_option?.order_id
+          orderId = res.provider_payment_id
         }
       }
 
@@ -337,7 +337,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     txId: string,
     amount: number,
     merchantName: string,
-    orderId?: string
+    orderId?: string | null
   ) => {
     if (!paymentConfig?.key_id) {
       alert('Razorpay public Key ID not configured on server.')
